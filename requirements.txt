@@ -1,0 +1,5 @@
+pandas
+numpy
+finance-datareader
+scikit-learn
+matplotlib
