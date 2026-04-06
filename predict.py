@@ -6,9 +6,8 @@ from model import prepare_features
 
 def predict_today(symbol='KS11'):
     """
-    Fetches latest data and predicts today's closing price.
+    Predicts the next closing price using return-based forecasting.
     """
-    # Load model
     model_path = f'models/{symbol}_model.joblib'
     if not os.path.exists(model_path):
         print(f"Model {model_path} not found. Run model.py first.")
@@ -16,43 +15,44 @@ def predict_today(symbol='KS11'):
     
     model = joblib.load(model_path)
     
-    # Fetch latest data (e.g., from 6 months ago to today)
     from datetime import datetime, timedelta
-    start_date = (datetime.now() - timedelta(days=180)).strftime('%Y-%m-%d')
+    start_date = (datetime.now() - timedelta(days=365)).strftime('%Y-%m-%d')
     df = fdr.DataReader(symbol, start_date)
     
-    # Prepare features (we need enough rows to calculate indicators)
-    df_with_features = prepare_features(df.copy())
+    # Calculate Relative Features
+    df['Return'] = df['Close'].pct_change()
+    df['MA5_Rel'] = df['Close'] / df['Close'].rolling(window=5).mean()
+    df['MA20_Rel'] = df['Close'] / df['Close'].rolling(window=20).mean()
+    df['MA60_Rel'] = df['Close'] / df['Close'].rolling(window=60).mean()
     
-    # Get the latest row of features (excluding the Target which we shift for training)
-    features_list = ['Open', 'High', 'Low', 'Close', 'Volume', 'MA5', 'MA20', 'MA60', 'RSI', 'MACD', 'Signal']
+    delta = df['Close'].diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+    rs = gain / loss
+    df['RSI'] = 100 - (100 / (1 + rs))
     
-    # We need the most recent row that has all indicators calculated
-    latest_features = df_with_features[features_list].tail(1)
+    exp1 = df['Close'].ewm(span=12, adjust=False).mean()
+    exp2 = df['Close'].ewm(span=26, adjust=False).mean()
+    df['MACD_Rel'] = (exp1 - exp2) / df['Close']
+    df['Vol_Change'] = df['Volume'].pct_change()
     
-    # Note: If today is a trading day and it's currently open, df.tail(1) will have partial data.
-    # The model predicts the *next* day's close based on *current* day's OHLCV.
-    # So if we use today's open, high, low, close (so far), it predicts tomorrow's close.
-    # If we use yesterday's data, it predicts today's close.
+    features = ['Return', 'MA5_Rel', 'MA20_Rel', 'MA60_Rel', 'RSI', 'MACD_Rel', 'Vol_Change']
     
-    # To predict TODAY'S close, we use YESTERDAY'S data as features.
-    # In df_with_features, each row's Target is the next day's close.
-    # So the last row of df_with_features contains yesterday's data, and it predicted today's close.
+    # Predict the return for the NEXT trading day
+    latest_row = df[features].tail(1)
+    predicted_return = model.predict(latest_row)[0]
     
-    # Actually, in our train_model, Target = Close.shift(-1)
-    # This means for each day, we use that day's data to predict the NEXT day's close.
+    current_close = df['Close'].iloc[-1]
+    predicted_close = current_close * (1 + predicted_return)
     
-    # Fetch data up to yesterday to predict today.
-    # If we fetch up to "today", the last row is today.
+    last_date = latest_row.index[0].strftime('%Y-%m-%d')
+    print(f"\n--- [고도화된 수익률 기반 예측] ---")
+    print(f"분석 기준 날짜: {last_date}")
+    print(f"현재 종가: {current_close:.2f}")
+    print(f"예상 수익률: {predicted_return*100:+.2f}%")
+    print(f"다음 거래일 예상 종가: {predicted_close:.2f}")
     
-    prediction = model.predict(latest_features)[0]
-    
-    last_date = latest_features.index[0].strftime('%Y-%m-%d')
-    print(f"--- Prediction for {symbol} ---")
-    print(f"Based on data from: {last_date}")
-    print(f"Predicted Closing Price: {prediction:.2f}")
-    
-    return prediction
+    return predicted_close
 
 if __name__ == "__main__":
     predict_today()

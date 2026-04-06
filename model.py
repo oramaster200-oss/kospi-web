@@ -8,36 +8,38 @@ import os
 
 def prepare_features(df):
     """
-    Adds technical indicators and target variable to the dataframe.
+    Adds relative technical indicators and target return to the dataframe.
     """
-    # Moving Averages
-    df['MA5'] = df['Close'].rolling(window=5).mean()
-    df['MA20'] = df['Close'].rolling(window=20).mean()
-    df['MA60'] = df['Close'].rolling(window=60).mean()
+    # Relative price features
+    df['Return'] = df['Close'].pct_change()
+    df['MA5_Rel'] = df['Close'] / df['Close'].rolling(window=5).mean()
+    df['MA20_Rel'] = df['Close'] / df['Close'].rolling(window=20).mean()
+    df['MA60_Rel'] = df['Close'] / df['Close'].rolling(window=60).mean()
     
-    # RSI (Relative Strength Index)
+    # RSI (Relative Strength Index) - already relative (0-100)
     delta = df['Close'].diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
     rs = gain / loss
     df['RSI'] = 100 - (100 / (1 + rs))
     
-    # MACD (Moving Average Convergence Divergence)
+    # MACD Relative to price
     exp1 = df['Close'].ewm(span=12, adjust=False).mean()
     exp2 = df['Close'].ewm(span=26, adjust=False).mean()
-    df['MACD'] = exp1 - exp2
-    df['Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
+    df['MACD_Rel'] = (exp1 - exp2) / df['Close']
     
-    # Target: Tomorrow's Close
-    df['Target'] = df['Close'].shift(-1)
+    # Volume Change
+    df['Vol_Change'] = df['Volume'].pct_change()
     
-    # Drop rows with NaN values (due to rolling/shifting)
+    # Target: Tomorrow's Return (Next day's Close / Today's Close - 1)
+    df['Target_Return'] = df['Close'].pct_change().shift(-1)
+    
     df.dropna(inplace=True)
     return df
 
 def train_model(symbol='KS11'):
     """
-    Trains a RandomForest model using historical data.
+    Trains a RandomForest model to predict returns.
     """
     file_path = f'data/{symbol}_history.csv'
     if not os.path.exists(file_path):
@@ -47,32 +49,23 @@ def train_model(symbol='KS11'):
     df = pd.read_csv(file_path, index_col=0, parse_dates=True)
     df = prepare_features(df)
     
-    # Define features (X) and target (y)
-    features = ['Open', 'High', 'Low', 'Close', 'Volume', 'MA5', 'MA20', 'MA60', 'RSI', 'MACD', 'Signal']
+    # Define features (Relative values only)
+    features = ['Return', 'MA5_Rel', 'MA20_Rel', 'MA60_Rel', 'RSI', 'MACD_Rel', 'Vol_Change']
     X = df[features]
-    y = df['Target']
+    y = df['Target_Return']
     
-    # Split data
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
     
-    # Train model
-    print(f"Training model for {symbol}...")
-    model = RandomForestRegressor(n_estimators=100, random_state=42)
+    print(f"Training advanced model for {symbol} (Predicting Returns)...")
+    model = RandomForestRegressor(n_estimators=200, max_depth=10, random_state=42)
     model.fit(X_train, y_train)
     
-    # Evaluate
     predictions = model.predict(X_test)
     mae = mean_absolute_error(y_test, predictions)
-    rmse = np.sqrt(mean_squared_error(y_test, predictions))
+    print(f"Model trained. Mean Abs Error (Return): {mae:.4f}")
     
-    print(f"Model trained. MAE: {mae:.2f}, RMSE: {rmse:.2f}")
-    
-    # Save model
     os.makedirs('models', exist_ok=True)
-    model_path = f'models/{symbol}_model.joblib'
-    joblib.dump(model, model_path)
-    print(f"Model saved to {model_path}")
-    
+    joblib.dump(model, f'models/{symbol}_model.joblib')
     return model
 
 if __name__ == "__main__":
