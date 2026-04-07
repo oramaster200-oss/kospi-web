@@ -43,7 +43,7 @@ def calculate_technical_indicators(df, us_df):
     us_data = us_df[['US_Return']].shift(1)
     
     combined = df.join(us_data, how='left')
-    combined.fillna(method='ffill', inplace=True)
+    combined.ffill(inplace=True)
     combined.dropna(inplace=True)
     
     return combined
