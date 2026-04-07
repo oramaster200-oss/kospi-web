@@ -1,0 +1,2 @@
+ git remote set-url origin https://oramaster200-oss@github.com/oramaster200-oss/kospi-web.git
+git push origin main

@@ -4,3 +4,4 @@ __pycache__/
 *.csv
 *.joblib
 *.pyc
+node_modules

@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
     const pythonPath = 'C:\\Users\\mini\\AppData\\Local\\Programs\\Python\\Python312\\python.exe';
     const scriptPath = path.join(process.cwd(), script);
 
-    return new Promise((resolve) => {
+    return new Promise<NextResponse>((resolve) => {
       const process = spawn(pythonPath, [scriptPath]);
 
       let stdout = '';
