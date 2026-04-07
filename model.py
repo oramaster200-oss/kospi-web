@@ -49,8 +49,8 @@ def train_model(symbol='KS11'):
     df = pd.read_csv(file_path, index_col=0, parse_dates=True)
     df = prepare_features(df)
     
-    # Define features (Relative values only)
-    features = ['Return', 'MA5_Rel', 'MA20_Rel', 'MA60_Rel', 'RSI', 'MACD_Rel', 'Vol_Change']
+    # Define features (Relative values only, including US market return)
+    features = ['Return', 'MA5_Rel', 'MA20_Rel', 'MA60_Rel', 'RSI', 'MACD_Rel', 'Vol_Change', 'US_Return']
     X = df[features]
     y = df['Target_Return']
     

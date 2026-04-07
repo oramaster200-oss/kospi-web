@@ -164,7 +164,8 @@ const Dashboard = () => {
       </div>
 
       <footer className="mt-12 text-center text-slate-600 text-xs">
-        <p>© 2026 KOSPI Predict AI. Developed for oramaster200-oss. Data provided by FinanceDataReader.</p>
+        <p>© 2026 KOSPI Predict AI. Data provided by FinanceDataReader.</p>
+        <p className="mt-1 opacity-60">Fetching historical patterns for deep-learning analysis</p>
       </footer>
     </div>
   );
