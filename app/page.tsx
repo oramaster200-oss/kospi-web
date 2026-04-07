@@ -24,20 +24,29 @@ const Dashboard = () => {
 
   const fetchMarketData = async () => {
     try {
+      // Fetch latest 100 days (descending order) to get the most recent data
       const { data, error } = await supabase
         .from('kospi_history')
         .select('*')
-        .order('date', { ascending: true })
+        .order('date', { ascending: false })
         .limit(100);
 
       if (error) throw error;
 
       if (data && data.length > 0) {
-        const latest = data[data.length - 1];
-        const previous = data[data.length - 2] || latest;
+        // Since we fetched in descending order, the first element is the latest
+        const latest = data[0];
+        const previous = data[1] || latest;
         const percentChange = ((latest.close - previous.close) / previous.close) * 100;
 
-        // Mock prediction calculation for visual purposes
+        // Note: For the chart, we need the data in ascending order (past to present)
+        const historyData = [...data].reverse().map(item => ({
+          date: item.date,
+          close: item.close,
+          rsi: item.rsi
+        }));
+
+        // Mock prediction calculation (In a real scenario, this would come from a dedicated predictions table)
         const predictedReturn = 0.0015; 
         const predictedPrice = latest.close * (1 + predictedReturn);
 
@@ -47,11 +56,7 @@ const Dashboard = () => {
             predictedPrice,
             percentChange
           },
-          history: data.map(item => ({
-            date: item.date,
-            close: item.close,
-            rsi: item.rsi
-          }))
+          history: historyData
         });
       }
     } catch (error) {

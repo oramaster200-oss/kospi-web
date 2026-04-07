@@ -86,6 +86,20 @@ def predict_today(symbol='KS11'):
     print(f"예상 수익률: {predicted_return*100:+.2f}%")
     print(f"다음 거래일 예상 종가: {predicted_close:.2f}")
     
+    # Save results to a file for the web API to read
+    import json
+    prediction_result = {
+        'date': latest_data['date'],
+        'current_close': current_close,
+        'predicted_return': predicted_return,
+        'predicted_close': predicted_close
+    }
+    
+    os.makedirs('data', exist_ok=True)
+    with open('data/latest_prediction.json', 'w') as f:
+        json.dump(prediction_result, f)
+    print("Prediction saved to data/latest_prediction.json")
+    
     return predicted_close
 
 if __name__ == "__main__":

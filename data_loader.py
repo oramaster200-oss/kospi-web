@@ -48,7 +48,7 @@ def calculate_technical_indicators(df, us_df):
     
     return combined
 
-def fetch_and_save_to_supabase(symbol='KS11', us_symbol='^GSPC', start='2010-01-01'):
+def fetch_and_save_to_supabase(symbol='KS11', us_symbol='^GSPC', start='2020-01-01'):
     """
     Fetches data, calculates indicators, and upserts to Supabase in chunks.
     """
@@ -81,19 +81,24 @@ def fetch_and_save_to_supabase(symbol='KS11', us_symbol='^GSPC', start='2010-01-
                     row[k] = None
 
         total_rows = len(data_to_upsert)
-        chunk_size = 100
+        chunk_size = 50  # Smaller chunk size for better stability
+        print(f"Total rows to process: {total_rows}")
         print(f"Uploading {total_rows} rows in chunks of {chunk_size}...")
 
+        success_count = 0
         for i in range(0, total_rows, chunk_size):
             chunk = data_to_upsert[i:i + chunk_size]
             try:
-                supabase.table('kospi_history').upsert(chunk).execute()
-                print(f"Uploaded rows {i} to {min(i + chunk_size, total_rows)}...")
-                time.sleep(0.1) # Small delay to avoid rate limiting
+                # Use upsert with on_conflict if necessary, but date should be PK
+                response = supabase.table('kospi_history').upsert(chunk).execute()
+                success_count += len(chunk)
+                print(f"Successfully uploaded {success_count}/{total_rows} rows...")
+                time.sleep(0.05) # Reduced delay
             except Exception as chunk_error:
                 print(f"Error uploading chunk starting at index {i}: {chunk_error}")
+                # Don't exit, try next chunk
 
-        print("\nSuccessfully finished updating Supabase!")
+        print(f"\nFinished updating Supabase. Total successful rows: {success_count}")
 
     except Exception as e:
         print(f"A fatal error occurred: {e}")
