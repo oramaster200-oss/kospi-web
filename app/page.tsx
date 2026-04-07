@@ -1,5 +1,7 @@
-import React from 'react';
-import { TrendingUp, TrendingDown, Activity, Calendar, BarChart3, Info } from 'lucide-react';
+'use client';
+
+import React, { useState } from 'react';
+import { TrendingUp, TrendingDown, Activity, Calendar, BarChart3, Info, Play, RefreshCcw, Brain, Rocket, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 
 const Dashboard = () => {
   // Mock data (실제로는 Python 모델 결과를 API로 받아오게 됩니다)
@@ -8,6 +10,41 @@ const Dashboard = () => {
   const priceChange = predictedPrice - currentPrice;
   const percentChange = (priceChange / currentPrice) * 100;
   const isUp = priceChange >= 0;
+
+  // Execution states
+  const [running, setRunning] = useState<string | null>(null);
+  const [status, setStatus] = useState<{ type: 'success' | 'error' | 'info', message: string } | null>(null);
+
+  const runScript = async (script: string) => {
+    setRunning(script);
+    setStatus({ type: 'info', message: `Executing ${script}...` });
+    
+    try {
+      const response = await fetch('/api/run-script', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ script }),
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok) {
+        setStatus({ type: 'success', message: `${script} completed successfully!` });
+      } else {
+        setStatus({ type: 'error', message: data.error || `${script} failed.` });
+      }
+    } catch (error) {
+      setStatus({ type: 'error', message: 'Failed to connect to the server.' });
+    } finally {
+      setRunning(null);
+    }
+  };
+
+  const operations = [
+    { id: 'data_loader.py', label: 'Update Data', icon: RefreshCcw, description: 'Fetch latest KOSPI data' },
+    { id: 'model.py', label: 'Train Model', icon: Brain, description: 'Re-train LSTM model' },
+    { id: 'predict.py', label: 'Predict KOSPI', icon: Rocket, description: 'Generate new forecast' },
+  ];
 
   return (
     <div className="min-h-screen bg-[#0F172A] text-white p-6 font-sans">
@@ -73,7 +110,50 @@ const Dashboard = () => {
         </div>
       </div>
 
-      {/* Chart Placeholder (Future Recharts Integration) */}
+      {/* Control Panel */}
+      <section className="mb-8">
+        <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+          <Play size={20} className="text-sky-400" /> Model Operations
+        </h3>
+        
+        {status && (
+          <div className={`mb-4 p-4 rounded-xl border flex items-center gap-3 ${
+            status.type === 'success' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 
+            status.type === 'error' ? 'bg-rose-500/10 border-rose-500/30 text-rose-400' : 
+            'bg-sky-500/10 border-sky-500/30 text-sky-400'
+          }`}>
+            {status.type === 'success' ? <CheckCircle2 size={18} /> : 
+             status.type === 'error' ? <AlertCircle size={18} /> : 
+             <Loader2 size={18} className="animate-spin" />}
+            <span className="text-sm font-medium">{status.message}</span>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {operations.map((op) => (
+            <button
+              key={op.id}
+              disabled={!!running}
+              onClick={() => runScript(op.id)}
+              className="group bg-[#1E293B] p-4 rounded-2xl border border-slate-700 hover:border-sky-500/50 hover:bg-slate-800 transition-all text-left flex items-start gap-4 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <div className="bg-slate-800 p-3 rounded-xl group-hover:bg-sky-500/10 transition-colors">
+                {running === op.id ? (
+                  <Loader2 size={24} className="text-sky-400 animate-spin" />
+                ) : (
+                  <op.icon size={24} className="text-slate-400 group-hover:text-sky-400" />
+                )}
+              </div>
+              <div>
+                <h4 className="font-bold text-slate-100">{op.label}</h4>
+                <p className="text-xs text-slate-500 mt-0.5">{op.description}</p>
+              </div>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {/* Chart Placeholder */}
       <div className="bg-[#1E293B] p-8 rounded-2xl border border-slate-700 h-[400px] flex flex-col items-center justify-center relative overflow-hidden">
         <div className="absolute inset-0 opacity-10 bg-[radial-gradient(#38bdf8_1px,transparent_1px)] [background-size:20px_20px]"></div>
         <div className="text-slate-500 mb-2">
