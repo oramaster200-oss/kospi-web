@@ -3,3 +3,5 @@ numpy
 finance-datareader
 scikit-learn
 matplotlib
+supabase
+python-dotenv

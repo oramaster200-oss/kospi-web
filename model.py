@@ -5,52 +5,62 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 import joblib
 import os
+from supabase import create_client, Client
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+url: str = os.getenv("SUPABASE_URL")
+key: str = os.getenv("SUPABASE_KEY")
+
+if not url or not key:
+    print("Error: SUPABASE_URL or SUPABASE_KEY not found in .env file.")
+    exit(1)
+
+supabase: Client = create_client(url, key)
 
 def prepare_features(df):
     """
     Adds relative technical indicators and target return to the dataframe.
     """
-    # Relative price features
-    df['Return'] = df['Close'].pct_change()
-    df['MA5_Rel'] = df['Close'] / df['Close'].rolling(window=5).mean()
-    df['MA20_Rel'] = df['Close'] / df['Close'].rolling(window=20).mean()
-    df['MA60_Rel'] = df['Close'] / df['Close'].rolling(window=60).mean()
-    
-    # RSI (Relative Strength Index) - already relative (0-100)
-    delta = df['Close'].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-    rs = gain / loss
-    df['RSI'] = 100 - (100 / (1 + rs))
-    
-    # MACD Relative to price
-    exp1 = df['Close'].ewm(span=12, adjust=False).mean()
-    exp2 = df['Close'].ewm(span=26, adjust=False).mean()
-    df['MACD_Rel'] = (exp1 - exp2) / df['Close']
-    
-    # Volume Change
-    df['Vol_Change'] = df['Volume'].pct_change()
+    # Note: Indicators are already calculated in data_loader.py and stored in Supabase.
+    # We just need to ensure the columns are mapped correctly and target is created.
     
     # Target: Tomorrow's Return (Next day's Close / Today's Close - 1)
-    df['Target_Return'] = df['Close'].pct_change().shift(-1)
+    df['Target_Return'] = df['close'].pct_change().shift(-1)
+    
+    # Map database column names to model feature names if they differ
+    # Features in DB: rsi, ma5_rel, ma20_rel, ma60_rel, macd_rel, vol_change, us_return
+    # Plus 'Return' which we can calculate here if needed
+    df['Return'] = df['close'].pct_change()
     
     df.dropna(inplace=True)
     return df
 
 def train_model(symbol='KS11'):
     """
-    Trains a RandomForest model to predict returns.
+    Trains a RandomForest model to predict returns using data from Supabase.
     """
-    file_path = f'data/{symbol}_history.csv'
-    if not os.path.exists(file_path):
-        print(f"File {file_path} not found. Run data_loader.py first.")
+    print(f"Fetching historical data for {symbol} from Supabase...")
+    try:
+        # Fetch all history from Supabase
+        response = supabase.table('kospi_history').select("*").order("date", desc=False).execute()
+        if not response.data:
+            print("No data found in Supabase. Run data_loader.py first.")
+            return
+        
+        df = pd.DataFrame(response.data)
+        df['date'] = pd.to_datetime(df['date'])
+        df.set_index('date', inplace=True)
+        
+    except Exception as e:
+        print(f"Error fetching from Supabase: {e}")
         return
-    
-    df = pd.read_csv(file_path, index_col=0, parse_dates=True)
+
     df = prepare_features(df)
     
-    # Define features (Relative values only, including US market return)
-    features = ['Return', 'MA5_Rel', 'MA20_Rel', 'MA60_Rel', 'RSI', 'MACD_Rel', 'Vol_Change', 'US_Return']
+    # Define features (Must match columns in Supabase or those calculated in prepare_features)
+    features = ['Return', 'ma5_rel', 'ma20_rel', 'ma60_rel', 'rsi', 'macd_rel', 'vol_change', 'us_return']
     X = df[features]
     y = df['Target_Return']
     

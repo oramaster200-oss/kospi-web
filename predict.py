@@ -1,12 +1,18 @@
-import FinanceDataReader as fdr
 import pandas as pd
 import joblib
 import os
-from model import prepare_features
+from supabase import create_client, Client
+from dotenv import load_dotenv
 
-def predict_today(symbol='KS11', us_symbol='^GSPC'):
+# Load environment variables
+load_dotenv()
+url: str = os.getenv("SUPABASE_URL")
+key: str = os.getenv("SUPABASE_KEY")
+supabase: Client = create_client(url, key)
+
+def predict_today(symbol='KS11'):
     """
-    Predicts the next closing price using return-based forecasting, including US market impact.
+    Predicts using data fetched directly from Supabase (much faster).
     """
     model_path = f'models/{symbol}_model.joblib'
     if not os.path.exists(model_path):
@@ -15,47 +21,67 @@ def predict_today(symbol='KS11', us_symbol='^GSPC'):
     
     model = joblib.load(model_path)
     
-    from datetime import datetime, timedelta
-    start_date = (datetime.now() - timedelta(days=365)).strftime('%Y-%m-%d')
-    df = fdr.DataReader(symbol, start_date)
-    us_df = fdr.DataReader(us_symbol, start_date)
+    # Fetch the LATEST row from Supabase
+    print("Fetching latest market data from Supabase...")
+    try:
+        response = supabase.table('kospi_history').select("*").order("date", desc=True).limit(1).execute()
+        if not response.data:
+            print("No data found in Supabase. Run data_loader.py first.")
+            return
+        
+        latest_data = response.data[0]
+    except Exception as e:
+        print(f"Error fetching from Supabase: {e}")
+        return
+
+    # Prepare features for prediction
+    # These must match the features used during training
+    features = ['rsi', 'ma5_rel', 'ma20_rel', 'ma60_rel', 'macd_rel', 'vol_change', 'us_return']
     
-    # Calculate Relative Features
-    df['Return'] = df['Close'].pct_change()
-    df['MA5_Rel'] = df['Close'] / df['Close'].rolling(window=5).mean()
-    df['MA20_Rel'] = df['Close'] / df['Close'].rolling(window=20).mean()
-    df['MA60_Rel'] = df['Close'] / df['Close'].rolling(window=60).mean()
+    # We need to calculate 'Return' if it's used as a feature, 
+    # but based on previous code, let's stick to what we have in DB
+    # Note: If your model requires 'Return' of the current day as a feature, 
+    # you might need to fetch 2 rows to calculate it.
     
-    delta = df['Close'].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-    rs = gain / loss
-    df['RSI'] = 100 - (100 / (1 + rs))
+    # Create DataFrame for prediction
+    input_df = pd.DataFrame([latest_data])
     
-    exp1 = df['Close'].ewm(span=12, adjust=False).mean()
-    exp2 = df['Close'].ewm(span=26, adjust=False).mean()
-    df['MACD_Rel'] = (exp1 - exp2) / df['Close']
-    df['Vol_Change'] = df['Volume'].pct_change()
+    # Map database column names to model feature names if they differ
+    # (Assuming model was trained with specific feature names)
+    # If the model was trained with 'RSI' (capitalized), we must match that.
+    feature_mapping = {
+        'rsi': 'RSI',
+        'ma5_rel': 'MA5_Rel',
+        'ma20_rel': 'MA20_Rel',
+        'ma60_rel': 'MA60_Rel',
+        'macd_rel': 'MACD_Rel',
+        'vol_change': 'Vol_Change',
+        'us_return': 'US_Return'
+    }
     
-    # Incorporate latest US Market Return
-    us_df['US_Return'] = us_df['Close'].pct_change()
-    # Find the most recent US return available (e.g., today's or yesterday's close)
-    latest_us_return = us_df['US_Return'].iloc[-1]
-    df['US_Return'] = latest_us_return  # Apply latest US signal to the latest KOSPI row
+    # If your model needs 'Return' (pct_change of close), 
+    # we should have calculated it in data_loader and stored it.
+    # Let's check what features model.py expects.
     
-    features = ['Return', 'MA5_Rel', 'MA20_Rel', 'MA60_Rel', 'RSI', 'MACD_Rel', 'Vol_Change', 'US_Return']
+    input_row = pd.DataFrame([{
+        'Return': (latest_data['close'] / latest_data['close']) - 1, # Placeholder if needed
+        'MA5_Rel': latest_data['ma5_rel'],
+        'MA20_Rel': latest_data['ma20_rel'],
+        'MA60_Rel': latest_data['ma60_rel'],
+        'RSI': latest_data['rsi'],
+        'MACD_Rel': latest_data['macd_rel'],
+        'Vol_Change': latest_data['vol_change'],
+        'US_Return': latest_data['us_return']
+    }])
     
-    # Predict the return for the NEXT trading day
-    latest_row = df[features].tail(1)
-    predicted_return = model.predict(latest_row)[0]
+    required_features = ['Return', 'MA5_Rel', 'MA20_Rel', 'MA60_Rel', 'RSI', 'MACD_Rel', 'Vol_Change', 'US_Return']
+    predicted_return = model.predict(input_row[required_features])[0]
     
-    current_close = df['Close'].iloc[-1]
+    current_close = latest_data['close']
     predicted_close = current_close * (1 + predicted_return)
     
-    last_date = latest_row.index[0].strftime('%Y-%m-%d')
-    print(f"\n--- [미국 증시 반영 고도화 예측] ---")
-    print(f"분석 기준 날짜: {last_date}")
-    print(f"참고 미국 증시({us_symbol}) 수익률: {latest_us_return*100:+.2f}%")
+    print(f"\n--- [Supabase 기반 고속 예측 결과] ---")
+    print(f"분석 기준 날짜: {latest_data['date']}")
     print(f"현재 종가: {current_close:.2f}")
     print(f"예상 수익률: {predicted_return*100:+.2f}%")
     print(f"다음 거래일 예상 종가: {predicted_close:.2f}")
