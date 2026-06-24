@@ -113,44 +113,36 @@ async function getStockAnalysisFromGemini(stockQuery: string) {
     throw new Error("GEMINI_API_KEY environment variable is not defined");
   }
 
-  const prompt = `Analyze the KOSPI stock named "${stockQuery}" or matching symbol. 
-Search for the most recent up-to-date information, including:
-1. Current market price in KRW (Korean Won).
-2. Daily price change and percentage change.
-3. High, low, and trading volume for today.
-4. Recent financial performance, news, and market sentiment.
-5. Technical analysis indicators (e.g., moving averages, RSI, MACD trends).
+  const prompt = `Analyze KOSPI stock: "${stockQuery}".
+Use Google Search for real-time data:
+1. Price, daily change, high, low, volume.
+2. Market sentiment, financial overview, news.
+3. Indicators (RSI, SMA, MACD).
 
-Determine the 'analysisResult' (must be exactly one of: STRONG_BUY, BUY, HOLD, SELL) and an 'analysisScore' from 0 to 100 (where 90-100 is Strong Buy, 75-80 is Buy, 40-74 is Hold, and under 40 is Sell).
-Give a suggested targetPrice and stopLossPrice in KRW.
-Provide a professional summary, bullet points for strengths (3 items), risks (3 items), and recent news (3 items).
-Also provide technical indicators list (at least 3, e.g., 20-Day SMA, RSI (14), MACD) with name, value (e.g., "68.5", "Golden Cross"), status (BULLISH, NEUTRAL, BEARISH), and a short description.
-
-You MUST return the output ONLY as a raw, valid JSON object with the following structure:
+Output MUST be a raw JSON object only (no markdown code blocks, no text outside JSON):
 {
-  "stockName": "Korean stock name (e.g. 삼성전자)",
-  "symbol": "6-digit code (e.g. 005930)",
-  "currentPrice": "current price formatted with commas, e.g. 75,200",
-  "priceChange": "e.g. +1,500 or -800",
-  "priceChangePercent": "e.g. +2.03% or -1.15%",
-  "highestPrice": "e.g. 76,000",
-  "lowestPrice": "e.g. 74,100",
-  "volume": "e.g. 15,420,110 shares",
-  "analysisResult": "STRONG_BUY" | "BUY" | "HOLD" | "SELL",
-  "analysisScore": number,
-  "targetPrice": "e.g. 85,000 KRW",
-  "stopLossPrice": "e.g. 71,000 KRW",
-  "summary": "2-3 sentence overview",
-  "strengths": ["strength 1", "strength 2", "strength 3"],
-  "risks": ["risk 1", "risk 2", "risk 3"],
+  "stockName": "Name",
+  "symbol": "6-digit",
+  "currentPrice": "75,200",
+  "priceChange": "+1,500",
+  "priceChangePercent": "+2.03%",
+  "highestPrice": "76,000",
+  "lowestPrice": "74,100",
+  "volume": "15.4M shares",
+  "analysisResult": "STRONG_BUY"|"BUY"|"HOLD"|"SELL",
+  "analysisScore": 85,
+  "targetPrice": "85,000 KRW",
+  "stopLossPrice": "71,000 KRW",
+  "summary": "2-sentence Korean summary",
+  "strengths": ["s1", "s2", "s3"],
+  "risks": ["r1", "r2", "r3"],
   "technicalIndicators": [
-    { "name": "RSI (14)", "value": "55.4", "status": "NEUTRAL", "description": "brief detail" }
+    { "name": "RSI(14)", "value": "55.4", "status": "NEUTRAL"|"BULLISH"|"BEARISH", "description": "detail" }
   ],
   "recentNews": [
-    { "title": "headline", "sentiment": "POSITIVE" | "NEUTRAL" | "NEGATIVE", "source": "agency" }
+    { "title": "news title", "sentiment": "POSITIVE"|"NEUTRAL"|"NEGATIVE", "source": "agency" }
   ]
-}
-Return only the raw JSON. Do not write markdown wrapping, other text, or explanation.`;
+}`;
 
   const response = await ai.models.generateContent({
     model: "gemini-2.5-flash",
@@ -297,8 +289,8 @@ app.post("/api/analyze-stock", async (req, res) => {
   }
 });
 
-// 3. API: Popular base stock metadata for search recommendation
-app.get("/api/popular-stocks", (req, res) => {
+// 3. API: Batch fetch popular stock prices and change percents
+app.get("/api/popular-stocks-prices", async (req, res) => {
   const popular = [
     { symbol: "005930", name: "삼성전자", category: "반도체", basePrice: 72500 },
     { symbol: "000660", name: "SK하이닉스", category: "반도체", basePrice: 218000 },
@@ -312,23 +304,82 @@ app.get("/api/popular-stocks", (req, res) => {
     { symbol: "068270", name: "셀트리온", category: "제약/바이오", basePrice: 179500 }
   ];
 
-  const now = new Date();
-  const seed = now.getMinutes() + now.getSeconds() / 60;
-  const percentChange = Math.sin(seed) * 1.8;
+  try {
+    if (!apiKey) {
+      throw new Error("No Gemini API key configured, using high-fidelity mock fallback");
+    }
 
-  const dynamicPopular = popular.map(stock => {
-    const diffVal = Math.round(stock.basePrice * (percentChange / 100));
-    const finalPrice = stock.basePrice + diffVal;
-    return {
-      symbol: stock.symbol,
-      name: stock.name,
-      category: stock.category,
-      basePrice: finalPrice.toLocaleString("ko-KR")
-    };
-  });
+    const prompt = `For the following 10 KOSPI stocks, fetch their latest real-time market prices (in KRW) and their daily percentage changes (e.g., +1.50% or -0.80%):
+1. 삼성전자 (005930)
+2. SK하이닉스 (000660)
+3. LG에너지솔루션 (373220)
+4. 삼성바이오로직스 (207940)
+5. 현대차 (005380)
+6. POSCO홀딩스 (005490)
+7. NAVER (035420)
+8. 카카오 (035720)
+9. 기아 (000270)
+10. 셀트리온 (068270)
 
-  res.json(dynamicPopular);
+You MUST return the output ONLY as a raw, valid JSON array containing exactly 10 items, where each item has the following structure:
+{
+  "symbol": "6-digit code",
+  "name": "Korean stock name",
+  "price": "current price formatted with commas, e.g. 75,200",
+  "changePercent": "e.g. +2.03% or -1.15%"
+}
+Return only the raw JSON. Do not write markdown wrapping, other text, or explanation.`;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: prompt,
+      config: {
+        systemInstruction: "You are an expert market analyst. Retrieve real-time stock prices and daily percentage changes using search grounding.",
+        tools: [{ googleSearch: {} }]
+      }
+    });
+
+    const parsed = parseGeminiResponse(response.text || "[]");
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      // Merge categories back in
+      const merged = parsed.map((item: any) => {
+        const found = popular.find(p => p.symbol === item.symbol || p.name === item.name);
+        return {
+          symbol: item.symbol || found?.symbol || "",
+          name: item.name || found?.name || "",
+          category: found?.category || "기타",
+          price: item.price || found?.basePrice.toLocaleString("ko-KR") || "0",
+          changePercent: item.changePercent || "+0.00%"
+        };
+      });
+      return res.json(merged);
+    }
+    throw new Error("Invalid array returned from Gemini");
+  } catch (error: any) {
+    console.warn("[Server API Warning] Gemini call failed for popular stocks, falling back to mock:", error.message);
+    const now = new Date();
+    const seed = now.getMinutes() + now.getSeconds() / 60;
+
+    const fallbackData = popular.map(stock => {
+      // customize change percent slightly per stock so it's not identical
+      const stockSeed = stock.name.charCodeAt(0) + seed;
+      const stockPercent = (Math.sin(stockSeed) * 2.3).toFixed(2);
+      const stockSign = parseFloat(stockPercent) >= 0 ? "+" : "";
+      const diffVal = Math.round(stock.basePrice * (parseFloat(stockPercent) / 100));
+      const finalPrice = stock.basePrice + diffVal;
+
+      return {
+        symbol: stock.symbol,
+        name: stock.name,
+        category: stock.category,
+        price: finalPrice.toLocaleString("ko-KR"),
+        changePercent: `${stockSign}${stockPercent}%`
+      };
+    });
+    res.json(fallbackData);
+  }
 });
+
 
 // Serve frontend build static files or connect to Vite middleware
 async function setupServer() {

@@ -110,8 +110,6 @@ export default function App() {
   useEffect(() => {
     fetchMarketIndices();
     fetchPopularStocks();
-    // Default search for Samsung Electronics
-    handleSearch("삼성전자");
   }, []);
 
   const fetchMarketIndices = async () => {
@@ -136,7 +134,7 @@ export default function App() {
 
   const fetchPopularStocks = async () => {
     try {
-      const res = await fetch("/api/popular-stocks");
+      const res = await fetch("/api/popular-stocks-prices");
       if (res.ok) {
         const contentType = res.headers.get("content-type");
         if (contentType && contentType.includes("application/json")) {
@@ -192,10 +190,10 @@ export default function App() {
         return item;
       }));
 
-      // Automatically update the popular stocks' basePrice if their symbol or name matches
+      // Automatically update the popular stocks' price if their symbol or name matches
       setPopularStocks(prev => prev.map(item => {
         if (item.symbol === data.symbol || item.name === data.stockName) {
-          return { ...item, basePrice: data.currentPrice };
+          return { ...item, price: data.currentPrice, changePercent: data.priceChangePercent };
         }
         return item;
       }));
@@ -220,7 +218,7 @@ export default function App() {
       symbol = matched.symbol;
     }
 
-    const mockPrice = matched ? parseFloat(matched.basePrice.replace(/,/g, "")) : 72500;
+    const mockPrice = matched ? parseFloat((matched.price || "0").replace(/,/g, "")) : 72500;
     
     const fallback: StockAnalysis = {
       stockName: name,
@@ -594,8 +592,8 @@ export default function App() {
       {/* BENTO GRID LAYOUT */}
       <main className="grid grid-cols-1 md:grid-cols-12 gap-4 flex-grow">
         
-        {/* BENTO 1: Left Navigation & Watchlist (col-span-3) */}
-        <section id="bento-watchlist" className="md:col-span-3 bg-[#12131A] border border-[#23252E] rounded-3xl p-5 flex flex-col justify-between shadow-xl">
+        {/* BENTO 1: Left Navigation & Watchlist (col-span-4) */}
+        <section id="bento-watchlist" className="md:col-span-4 bg-[#12131A] border border-[#23252E] rounded-3xl p-5 flex flex-col justify-between shadow-xl">
           <div>
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-xs font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
@@ -605,44 +603,68 @@ export default function App() {
               <span className="text-[10px] bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded-full font-mono">KOSPI</span>
             </div>
             
-            {/* Real-time search quick select */}
-            <div className="space-y-2 max-h-[280px] overflow-y-auto pr-1">
-              {popularStocks.map((stock) => {
-                const isWatched = watchlist.some(w => w.symbol === stock.symbol);
-                const isCurrent = currentStock?.symbol === stock.symbol;
-                return (
-                  <div 
-                    key={stock.symbol}
-                    className={`p-3 rounded-xl border transition-all cursor-pointer flex flex-col justify-between ${
-                      isCurrent 
-                        ? "bg-[#1E212E] border-blue-500/40 shadow-md" 
-                        : "bg-[#16171D] border-[#23252E] hover:border-gray-700 hover:bg-[#1A1B24]"
-                    }`}
-                    onClick={() => handleSearch(stock.name)}
-                  >
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <span className="font-bold text-white text-sm">{stock.name}</span>
-                        <span className="text-[10px] text-gray-500 font-mono ml-2">{stock.symbol}</span>
-                      </div>
-                      <button 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleWatchlist(stock);
-                        }}
-                        className={`text-xs p-1 rounded-md hover:bg-white/10 ${isWatched ? "text-amber-400" : "text-gray-500 hover:text-gray-300"}`}
-                        title={isWatched ? "관심종목 해제" : "관심종목 추가"}
+            {/* Real-time search quick select table */}
+            <div className="overflow-x-auto overflow-y-auto max-h-[380px] pr-1">
+              <table className="w-full border-collapse">
+                <thead className="text-[10px] text-gray-500 uppercase font-black border-b border-[#23252E]">
+                  <tr>
+                    <th className="pb-2 text-left">종목</th>
+                    <th className="pb-2 text-right">현재가</th>
+                    <th className="pb-2 text-right">등락률</th>
+                    <th className="pb-2 text-center">분석</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#1C1E26]">
+                  {popularStocks.map((stock) => {
+                    const isWatched = watchlist.some(w => w.symbol === stock.symbol);
+                    const isCurrent = currentStock?.symbol === stock.symbol;
+                    const isPositive = stock.changePercent.startsWith("+");
+                    return (
+                      <tr 
+                        key={stock.symbol}
+                        className={`hover:bg-[#1A1B24] transition-colors ${isCurrent ? "bg-[#1E212E]" : ""}`}
                       >
-                        ★
-                      </button>
-                    </div>
-                    <div className="flex justify-between items-end mt-2">
-                      <span className="text-xs text-gray-400 font-medium">{stock.category}</span>
-                      <span className="text-xs font-mono font-bold text-white">{stock.basePrice} 원</span>
-                    </div>
-                  </div>
-                );
-              })}
+                        <td className="py-2.5 pr-2">
+                          <div className="flex items-center gap-1.5">
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleWatchlist(stock);
+                              }}
+                              className={`text-xs focus:outline-none ${isWatched ? "text-amber-400" : "text-gray-500 hover:text-gray-300"}`}
+                              title={isWatched ? "관심종목 해제" : "관심종목 추가"}
+                            >
+                              ★
+                            </button>
+                            <div className="flex flex-col">
+                              <span className="font-bold text-white text-xs md:text-sm">{stock.name}</span>
+                              <span className="text-[9px] text-gray-500 font-mono">{stock.symbol}</span>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-2.5 text-right font-mono text-xs font-bold text-white pr-2">
+                          {stock.price} 원
+                        </td>
+                        <td className={`py-2.5 text-right font-mono text-xs font-bold ${isPositive ? "text-emerald-400" : "text-rose-400"}`}>
+                          {stock.changePercent}
+                        </td>
+                        <td className="py-2.5 text-center pl-2">
+                          <button
+                            onClick={() => handleSearch(stock.name)}
+                            className={`px-2 py-1 rounded-lg text-[10px] font-black tracking-tight border transition-all cursor-pointer ${
+                              isCurrent
+                                ? "bg-blue-600 border-blue-500 text-white shadow-md"
+                                : "bg-[#16171D] border-[#23252E] text-blue-400 hover:bg-blue-500/10 hover:border-blue-500/30"
+                            }`}
+                          >
+                            AI 분석
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </div>
 
@@ -652,13 +674,13 @@ export default function App() {
               💡 퀀트 팁
             </h3>
             <p className="text-gray-400 leading-relaxed text-[11px]">
-              AI 점수가 <span className="text-emerald-400 font-bold">75점 이상</span>일 때 매수 고려, <span className="text-rose-400 font-bold">40점 이하</span>는 비중 조절을 권장합니다.
+              AI 분석 버튼을 클릭하시면 실시간 뉴스, 지표, AI의 종합 의견과 점수가 조회됩니다. <span className="text-emerald-400 font-bold">75점 이상</span>일 때 매수 고려를 추천합니다.
             </p>
           </div>
         </section>
 
-        {/* BENTO 2: Center - Hero Stock details & Interactive Chart (col-span-6) */}
-        <section id="bento-chart" className="md:col-span-6 bg-[#12131A] border border-[#23252E] rounded-3xl p-6 flex flex-col justify-between relative shadow-xl min-h-[420px]">
+        {/* BENTO 2: Center - Hero Stock details & Interactive Chart (col-span-5) */}
+        <section id="bento-chart" className="md:col-span-5 bg-[#12131A] border border-[#23252E] rounded-3xl p-6 flex flex-col justify-between relative shadow-xl min-h-[420px]">
           {currentStock ? (
             <>
               {/* Stock Title and Indicators */}

@@ -49,7 +49,8 @@ export interface PopularStock {
   symbol: string;
   name: string;
   category: string;
-  basePrice: string;
+  price: string;
+  changePercent: string;
 }
 
 export interface PortfolioItem {
