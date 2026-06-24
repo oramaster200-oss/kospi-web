@@ -209,8 +209,18 @@ app.get("/api/debug-status", async (req, res) => {
     testSimple,
     errorSimple,
     testSearch,
-    errorSearch
   });
+});
+
+// 0.5. API: Verify application entry password
+app.post("/api/verify-password", (req, res) => {
+  const { password } = req.body;
+  const correctPassword = process.env.APP_PASSWORD || "1234";
+  if (password === correctPassword) {
+    res.json({ success: true });
+  } else {
+    res.status(401).json({ success: false, error: "비밀번호가 올바르지 않습니다." });
+  }
 });
 
 // 1. API: Get Korean Market Indices (KOSPI & KOSDAQ) with current trends

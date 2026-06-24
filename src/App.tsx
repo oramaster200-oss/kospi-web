@@ -15,7 +15,8 @@ import {
   Bookmark, 
   CheckCircle,
   HelpCircle,
-  ArrowRight
+  ArrowRight,
+  Lock
 } from "lucide-react";
 import { 
   StockAnalysis, 
@@ -26,6 +27,38 @@ import {
 } from "./types";
 
 export default function App() {
+  // Authentication states
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => sessionStorage.getItem("kospi_auth") === "true");
+  const [passwordInput, setPasswordInput] = useState("");
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authLoading, setAuthLoading] = useState(false);
+
+  const handleVerifyPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!passwordInput.trim()) return;
+    setAuthLoading(true);
+    setAuthError(null);
+    try {
+      const res = await fetch("/api/verify-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: passwordInput.trim() })
+      });
+      
+      if (res.ok) {
+        sessionStorage.setItem("kospi_auth", "true");
+        setIsAuthenticated(true);
+      } else {
+        const errData = await res.json();
+        setAuthError(errData.error || "비밀번호가 올바르지 않습니다.");
+      }
+    } catch (err) {
+      setAuthError("서버와 통신에 실패했습니다.");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
   // Input & search state
   const [searchQuery, setSearchQuery] = useState("");
   const [currentStock, setCurrentStock] = useState<StockAnalysis | null>(null);
@@ -417,6 +450,57 @@ export default function App() {
         return "bg-gradient-to-br from-amber-500 to-orange-600 text-white border-amber-500/30";
     }
   };
+
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-[#0A0B0E] text-[#E0E1E6] font-sans flex items-center justify-center p-4 relative overflow-hidden antialiased">
+        {/* Glow Background Elements */}
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-600/10 rounded-full blur-[120px] pointer-events-none"></div>
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-indigo-600/10 rounded-full blur-[120px] pointer-events-none"></div>
+
+        <div className="w-full max-w-md bg-[#12131A]/80 border border-[#23252E] backdrop-blur-xl rounded-3xl p-8 shadow-2xl relative z-10">
+          <div className="flex flex-col items-center text-center mb-8">
+            <div className="w-14 h-14 bg-gradient-to-tr from-blue-600 to-indigo-500 rounded-2xl flex items-center justify-center text-white shadow-xl shadow-blue-900/30 mb-4">
+              <Lock className="w-6 h-6" />
+            </div>
+            <h1 className="text-2xl font-black tracking-tight text-white flex items-center gap-2">
+              KOSPI <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-indigo-400 font-extrabold">QUANT ENGINE</span>
+            </h1>
+            <p className="text-xs text-gray-400 mt-2">시스템 보안을 위해 접속 비밀번호를 입력해 주세요.</p>
+          </div>
+
+          <form onSubmit={handleVerifyPassword} className="space-y-5">
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block">Access Password</label>
+              <input
+                type="password"
+                placeholder="••••"
+                value={passwordInput}
+                onChange={(e) => setPasswordInput(e.target.value)}
+                className="w-full bg-[#16171D] border border-[#23252E] focus:border-blue-500 rounded-xl py-3 px-4 text-center text-white placeholder-gray-600 transition-all outline-none focus:ring-1 focus:ring-blue-500/40 text-lg tracking-widest font-mono"
+                autoFocus
+              />
+            </div>
+
+            {authError && (
+              <div className="bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-xl p-3 text-xs text-center font-medium">
+                {authError}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={authLoading}
+              className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded-xl text-xs shadow-lg shadow-blue-900/20 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+            >
+              {authLoading ? "확인 중..." : "엔진 접속"}
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div id="kospi-app-container" className="min-h-screen bg-[#0A0B0E] text-[#E0E1E6] font-sans p-3 md:p-6 flex flex-col antialiased">
