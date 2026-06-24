@@ -11,11 +11,10 @@ const PORT = 3000;
 
 app.use(express.json());
 
-// Initialize Supabase client
-const supabase = createClient(
-  process.env.SUPABASE_URL || "",
-  process.env.SUPABASE_SERVICE_ROLE_KEY || ""
-);
+// Initialize Supabase client (optional — cache is skipped if credentials are absent)
+const supabase = (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY)
+  ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
+  : null;
 
 // Initialize Gemini SDK with telemetry header
 const apiKey = process.env.GEMINI_API_KEY;
@@ -79,6 +78,7 @@ function expiresAt(seconds: number): string {
 
 // market_indices
 async function getCachedMarketIndices() {
+  if (!supabase) return null;
   const { data } = await supabase
     .from("market_indices")
     .select("*")
@@ -96,6 +96,7 @@ async function getCachedMarketIndices() {
 }
 
 async function setCachedMarketIndices(payload: any) {
+  if (!supabase) return;
   await supabase.from("market_indices").upsert({
     id: "current",
     kospi_value:   payload.kospi.value,
@@ -115,6 +116,7 @@ async function setCachedMarketIndices(payload: any) {
 
 // popular_stocks
 async function getCachedPopularStocks() {
+  if (!supabase) return null;
   const { data } = await supabase
     .from("popular_stocks")
     .select("*")
@@ -131,6 +133,7 @@ async function getCachedPopularStocks() {
 }
 
 async function setCachedPopularStocks(stocks: any[]) {
+  if (!supabase) return;
   const rows = stocks.map((s: any) => ({
     symbol:        s.symbol,
     name:          s.name,
@@ -146,6 +149,7 @@ async function setCachedPopularStocks(stocks: any[]) {
 
 // stock_analyses (query_key = query.trim().toLowerCase())
 async function getCachedStockAnalysis(queryKey: string) {
+  if (!supabase) return null;
   const { data } = await supabase
     .from("stock_analyses")
     .select("*")
@@ -176,6 +180,7 @@ async function getCachedStockAnalysis(queryKey: string) {
 }
 
 async function setCachedStockAnalysis(queryKey: string, analysis: any) {
+  if (!supabase) return;
   await supabase.from("stock_analyses").upsert({
     query_key:            queryKey,
     symbol:               analysis.symbol,
@@ -217,6 +222,7 @@ const YAHOO_CHART_PARAMS: Record<string, { range: string; interval: string }> = 
 };
 
 async function getCachedChartData(symbol: string, period: string) {
+  if (!supabase) return null;
   const { data } = await supabase
     .from("stock_chart_cache")
     .select("*")
@@ -229,6 +235,7 @@ async function getCachedChartData(symbol: string, period: string) {
 }
 
 async function setCachedChartData(symbol: string, period: string, chartData: any[], dataSource: string) {
+  if (!supabase) return;
   await supabase.from("stock_chart_cache").upsert({
     symbol,
     period,
