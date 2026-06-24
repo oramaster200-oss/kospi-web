@@ -19,6 +19,37 @@ const ai = new GoogleGenAI({
   },
 });
 
+interface GenerateContentParams {
+  contents: string;
+  config?: any;
+}
+
+// Wrapper function to try gemini-2.5-flash first, and fallback to gemini-2.5-flash-lite if flash fails or is rate-limited
+async function generateContentWithRetry(params: GenerateContentParams) {
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: params.contents,
+      config: params.config,
+    });
+    return response;
+  } catch (flashError: any) {
+    console.warn(`[Gemini Fallback Warning] gemini-2.5-flash failed. Retrying with gemini-2.5-flash-lite. Error: ${flashError.message || flashError}`);
+    try {
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash-lite",
+        contents: params.contents,
+        config: params.config,
+      });
+      console.log(`[Gemini Fallback Success] Successfully completed request using gemini-2.5-flash-lite.`);
+      return response;
+    } catch (liteError: any) {
+      console.error(`[Gemini Fallback Error] Both gemini-2.5-flash and gemini-2.5-flash-lite failed.`);
+      throw liteError;
+    }
+  }
+}
+
 // Helper function to generate premium mock analysis when Gemini API is rate-limited or unavailable
 function getMockAnalysis(stockQuery: string) {
   const query = stockQuery.trim();
@@ -144,8 +175,7 @@ Output MUST be a raw JSON object only (no markdown code blocks, no text outside 
   ]
 }`;
 
-  const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
+  const response = await generateContentWithRetry({
     contents: prompt,
     config: {
       systemInstruction: "You are an elite stock analyst specializing in the Korean KOSPI stock market. Provide extremely accurate and highly professional analysis of stocks based on real-time web search results.",
@@ -247,8 +277,7 @@ You MUST return the output ONLY as a raw, valid JSON object with the following s
 }
 Return only the raw JSON. Do not write markdown wrapping, other text, or explanation.`;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+    const response = await generateContentWithRetry({
       contents: prompt,
       config: {
         systemInstruction: "You are an expert market analyst. Provide up-to-date market index data.",
@@ -330,8 +359,7 @@ You MUST return the output ONLY as a raw, valid JSON array containing exactly 10
 }
 Return only the raw JSON. Do not write markdown wrapping, other text, or explanation.`;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+    const response = await generateContentWithRetry({
       contents: prompt,
       config: {
         systemInstruction: "You are an expert market analyst. Retrieve real-time stock prices and daily percentage changes using search grounding.",
