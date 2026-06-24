@@ -164,6 +164,55 @@ Return only the raw JSON. Do not write markdown wrapping, other text, or explana
   return parseGeminiResponse(response.text || "{}");
 }
 
+// 0. Debug API: Diagnostics check for API Key and Gemini connection status
+app.get("/api/debug-status", async (req, res) => {
+  const hasKey = !!process.env.GEMINI_API_KEY;
+  const keySnippet = process.env.GEMINI_API_KEY ? process.env.GEMINI_API_KEY.slice(0, 8) + "..." : "none";
+  let testSimple = "not tested";
+  let testSearch = "not tested";
+  let errorSimple = null;
+  let errorSearch = null;
+
+  if (hasKey) {
+    // 1. Test simple call
+    try {
+      const testAi = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+      const resp = await testAi.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: "Hello, answer 'OK' and nothing else.",
+      });
+      testSimple = resp.text ? resp.text.trim() : "empty response";
+    } catch (err: any) {
+      errorSimple = err.message || err.toString();
+    }
+
+    // 2. Test search grounding call
+    try {
+      const testAi = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+      const resp = await testAi.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: "What is the current stock price of Samsung Electronics?",
+        config: {
+          tools: [{ googleSearch: {} }]
+        }
+      });
+      testSearch = resp.text ? "Success (got content)" : "empty response";
+    } catch (err: any) {
+      errorSearch = err.message || err.toString();
+    }
+  }
+
+  res.json({
+    hasKey,
+    keySnippet,
+    env: process.env.NODE_ENV || "unknown",
+    testSimple,
+    errorSimple,
+    testSearch,
+    errorSearch
+  });
+});
+
 // 1. API: Get Korean Market Indices (KOSPI & KOSDAQ) with current trends
 app.get("/api/market-indices", async (req, res) => {
   try {
