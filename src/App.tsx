@@ -541,7 +541,11 @@ export default function App() {
 
         {/* Market Status and Mini Index Widget */}
         <div className="flex items-center gap-4 bg-[#12131A] border border-[#23252E] px-4 py-2 rounded-2xl">
-          <div className="flex items-center gap-2">
+          <div 
+            onClick={handleRefreshAll}
+            className="flex items-center gap-2 cursor-pointer hover:bg-white/5 px-2 py-1.5 rounded-xl transition-colors"
+            title="실시간 시세 새로고침"
+          >
             <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
             <span className="text-xs font-bold text-emerald-500">REALTIME</span>
           </div>

@@ -24,30 +24,36 @@ interface GenerateContentParams {
   config?: any;
 }
 
-// Wrapper function to try gemini-2.5-flash first, and fallback to gemini-2.5-flash-lite if flash fails or is rate-limited
+// Wrapper function to sequentially try all requested models on failure/rate-limit
 async function generateContentWithRetry(params: GenerateContentParams) {
-  try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: params.contents,
-      config: params.config,
-    });
-    return response;
-  } catch (flashError: any) {
-    console.warn(`[Gemini Fallback Warning] gemini-2.5-flash failed. Retrying with gemini-2.5-flash-lite. Error: ${flashError.message || flashError}`);
+  const models = [
+    "gemini-2.5-flash",
+    "gemini-3.5-flash",
+    "gemini-2.5-flash-lite",
+    "gemini-3.1-flash-lite",
+    "gemini-3-flash-preview"
+  ];
+
+  let lastError = null;
+
+  for (const model of models) {
     try {
+      console.log(`[Gemini Request] Attempting generateContent with model: ${model}`);
       const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash-lite",
+        model: model,
         contents: params.contents,
         config: params.config,
       });
-      console.log(`[Gemini Fallback Success] Successfully completed request using gemini-2.5-flash-lite.`);
+      console.log(`[Gemini Success] Request completed successfully using model: ${model}`);
       return response;
-    } catch (liteError: any) {
-      console.error(`[Gemini Fallback Error] Both gemini-2.5-flash and gemini-2.5-flash-lite failed.`);
-      throw liteError;
+    } catch (err: any) {
+      lastError = err;
+      console.warn(`[Gemini Fallback Warning] Model ${model} failed. Error: ${err.message || err.toString()}`);
     }
   }
+
+  console.error(`[Gemini Fallback Error] All models in the fallback chain failed.`);
+  throw lastError || new Error("All Gemini models in fallback chain failed");
 }
 
 // Helper function to generate premium mock analysis when Gemini API is rate-limited or unavailable
