@@ -1,0 +1,6 @@
+{
+  "name": "코스피 주식 분석기",
+  "description": "실시간 코스피 주식 정보 조회 및 AI 기반 매수 타이밍 분석 서비스",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
