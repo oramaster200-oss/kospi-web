@@ -122,9 +122,10 @@ export default function App() {
   const handleRefreshAll = async () => {
     setLoadingIndices(true);
     try {
+      const timestamp = Date.now();
       const [indicesRes, stocksRes] = await Promise.all([
-        fetch("/api/market-indices"),
-        fetch("/api/popular-stocks-prices")
+        fetch(`/api/market-indices?_t=${timestamp}`),
+        fetch(`/api/popular-stocks-prices?_t=${timestamp}`)
       ]);
 
       if (indicesRes.ok) {

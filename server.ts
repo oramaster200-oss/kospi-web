@@ -60,16 +60,16 @@ async function generateContentWithRetry(params: GenerateContentParams) {
 function getMockAnalysis(stockQuery: string) {
   const query = stockQuery.trim();
   const popular = [
-    { symbol: "005930", name: "삼성전자", category: "반도체", basePrice: 72500, analysisResult: "BUY", score: 82, target: 84000, stopLoss: 68000 },
-    { symbol: "000660", name: "SK하이닉스", category: "반도체", basePrice: 218000, analysisResult: "STRONG_BUY", score: 92, target: 260000, stopLoss: 198000 },
+    { symbol: "005930", name: "삼성전자", category: "반도체", basePrice: 334500, analysisResult: "BUY", score: 82, target: 380000, stopLoss: 310000 },
+    { symbol: "000660", name: "SK하이닉스", category: "반도체", basePrice: 2621000, analysisResult: "STRONG_BUY", score: 92, target: 3000000, stopLoss: 2450000 },
     { symbol: "373220", name: "LG에너지솔루션", category: "2차전지", basePrice: 342000, analysisResult: "HOLD", score: 65, target: 380000, stopLoss: 315000 },
     { symbol: "207940", name: "삼성바이오로직스", category: "제약/바이오", basePrice: 981000, analysisResult: "BUY", score: 79, target: 1100000, stopLoss: 910000 },
     { symbol: "005380", name: "현대차", category: "자동차", basePrice: 248500, analysisResult: "BUY", score: 81, target: 290000, stopLoss: 228000 },
     { symbol: "005490", name: "POSCO홀딩스", category: "철강/소재", basePrice: 364000, analysisResult: "HOLD", score: 58, target: 410000, stopLoss: 335000 },
     { symbol: "035420", name: "NAVER", category: "IT/플랫폼", basePrice: 168000, analysisResult: "HOLD", score: 62, target: 195000, stopLoss: 152000 },
-    { symbol: "035720", name: "카카오", category: "IT/플랫폼", basePrice: 42300, analysisResult: "SELL", score: 35, target: 48000, stopLoss: 38000 },
-    { symbol: "000270", name: "기아", category: "자동차", basePrice: 123000, analysisResult: "STRONG_BUY", score: 90, target: 148000, stopLoss: 112000 },
-    { symbol: "068270", name: "셀트리온", category: "제약/바이오", basePrice: 179500, analysisResult: "BUY", score: 76, target: 205000, stopLoss: 164000 }
+    { symbol: "035720", name: "카카오", category: "IT/플랫폼", basePrice: 34150, analysisResult: "SELL", score: 35, target: 39000, stopLoss: 31000 },
+    { symbol: "000270", name: "기아", category: "자동차", basePrice: 139200, analysisResult: "STRONG_BUY", score: 90, target: 160000, stopLoss: 125000 },
+    { symbol: "068270", name: "셀트리온", category: "제약/바이오", basePrice: 173200, analysisResult: "BUY", score: 76, target: 200000, stopLoss: 155000 }
   ];
 
   const match = popular.find(s => s.name.includes(query) || query.includes(s.name) || s.symbol === query);
@@ -324,78 +324,55 @@ app.post("/api/analyze-stock", async (req, res) => {
   }
 });
 
-// 3. API: Batch fetch popular stock prices and change percents
+// 3. API: Batch fetch popular stock prices and change percents from Naver Finance (real-time)
 app.get("/api/popular-stocks-prices", async (req, res) => {
   const popular = [
-    { symbol: "005930", name: "삼성전자", category: "반도체", basePrice: 72500 },
-    { symbol: "000660", name: "SK하이닉스", category: "반도체", basePrice: 218000 },
+    { symbol: "005930", name: "삼성전자", category: "반도체", basePrice: 334500 },
+    { symbol: "000660", name: "SK하이닉스", category: "반도체", basePrice: 2621000 },
     { symbol: "373220", name: "LG에너지솔루션", category: "2차전지", basePrice: 342000 },
     { symbol: "207940", name: "삼성바이오로직스", category: "제약/바이오", basePrice: 981000 },
     { symbol: "005380", name: "현대차", category: "자동차", basePrice: 248500 },
     { symbol: "005490", name: "POSCO홀딩스", category: "철강/소재", basePrice: 364000 },
     { symbol: "035420", name: "NAVER", category: "IT/플랫폼", basePrice: 168000 },
-    { symbol: "035720", name: "카카오", category: "IT/플랫폼", basePrice: 42300 },
-    { symbol: "000270", name: "기아", category: "자동차", basePrice: 123000 },
-    { symbol: "068270", name: "셀트리온", category: "제약/바이오", basePrice: 179500 }
+    { symbol: "035720", name: "카카오", category: "IT/플랫폼", basePrice: 34150 },
+    { symbol: "000270", name: "기아", category: "자동차", basePrice: 139200 },
+    { symbol: "068270", name: "셀트리온", category: "제약/바이오", basePrice: 173200 }
   ];
 
   try {
-    if (!apiKey) {
-      throw new Error("No Gemini API key configured, using high-fidelity mock fallback");
-    }
-
-    const prompt = `For the following 10 KOSPI stocks, fetch their latest real-time market prices (in KRW) and their daily percentage changes (e.g., +1.50% or -0.80%):
-1. 삼성전자 (005930)
-2. SK하이닉스 (000660)
-3. LG에너지솔루션 (373220)
-4. 삼성바이오로직스 (207940)
-5. 현대차 (005380)
-6. POSCO홀딩스 (005490)
-7. NAVER (035420)
-8. 카카오 (035720)
-9. 기아 (000270)
-10. 셀트리온 (068270)
-
-You MUST return the output ONLY as a raw, valid JSON array containing exactly 10 items, where each item has the following structure:
-{
-  "symbol": "6-digit code",
-  "name": "Korean stock name",
-  "price": "current price formatted with commas, e.g. 75,200",
-  "changePercent": "e.g. +2.03% or -1.15%"
-}
-Return only the raw JSON. Do not write markdown wrapping, other text, or explanation.`;
-
-    const response = await generateContentWithRetry({
-      contents: prompt,
-      config: {
-        systemInstruction: "You are an expert market analyst. Retrieve real-time stock prices and daily percentage changes using search grounding.",
-        tools: [{ googleSearch: {} }]
-      }
+    const url = "https://polling.finance.naver.com/api/realtime?query=SERVICE_ITEM:005930,000660,373220,207940,005380,005490,035420,035720,000270,068270";
+    const response = await fetch(url, {
+      headers: { "User-Agent": "Mozilla/5.0" }
     });
 
-    const parsed = parseGeminiResponse(response.text || "[]");
-    if (Array.isArray(parsed) && parsed.length > 0) {
-      // Merge categories back in
-      const merged = parsed.map((item: any) => {
-        const found = popular.find(p => p.symbol === item.symbol || p.name === item.name);
+    if (!response.ok) {
+      throw new Error(`Naver Finance API responded with status ${response.status}`);
+    }
+
+    const data: any = await response.json();
+    const datas = data.result?.areas?.[0]?.datas;
+
+    if (Array.isArray(datas) && datas.length > 0) {
+      const merged = datas.map((item: any) => {
+        const found = popular.find(p => p.symbol === item.cd);
+        const sign = (item.rf === "1" || item.rf === "2") ? "+" : (item.rf === "4" || item.rf === "5") ? "-" : "";
         return {
-          symbol: item.symbol || found?.symbol || "",
-          name: item.name || found?.name || "",
+          symbol: item.cd,
+          name: found?.name || item.nm,
           category: found?.category || "기타",
-          price: item.price || found?.basePrice.toLocaleString("ko-KR") || "0",
-          changePercent: item.changePercent || "+0.00%"
+          price: item.nv.toLocaleString("ko-KR"),
+          changePercent: `${sign}${item.cr}%`
         };
       });
       return res.json(merged);
     }
-    throw new Error("Invalid array returned from Gemini");
+    throw new Error("Invalid datas structure from Naver Finance");
   } catch (error: any) {
-    console.warn("[Server API Warning] Gemini call failed for popular stocks, falling back to mock:", error.message);
+    console.warn("[Server API Warning] Naver Finance fetch failed, falling back to mock:", error.message);
     const now = new Date();
     const seed = now.getMinutes() + now.getSeconds() / 60;
 
     const fallbackData = popular.map(stock => {
-      // customize change percent slightly per stock so it's not identical
       const stockSeed = stock.name.charCodeAt(0) + seed;
       const stockPercent = (Math.sin(stockSeed) * 2.3).toFixed(2);
       const stockSign = parseFloat(stockPercent) >= 0 ? "+" : "";
