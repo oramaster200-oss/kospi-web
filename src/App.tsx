@@ -106,46 +106,46 @@ export default function App() {
     localStorage.setItem("kospi_portfolio", JSON.stringify(portfolio));
   }, [portfolio]);
 
-  // Fetch initial market data & popular stocks
+  // Fetch initial market data & popular stocks and set up real-time updates
   useEffect(() => {
-    fetchMarketIndices();
-    fetchPopularStocks();
-  }, []);
+    if (isAuthenticated) {
+      handleRefreshAll();
 
-  const fetchMarketIndices = async () => {
+      const interval = setInterval(() => {
+        handleRefreshAll();
+      }, 20000); // refresh every 20 seconds for authentic real-time simulation
+
+      return () => clearInterval(interval);
+    }
+  }, [isAuthenticated]);
+
+  const handleRefreshAll = async () => {
     setLoadingIndices(true);
     try {
-      const res = await fetch("/api/market-indices");
-      if (res.ok) {
-        const contentType = res.headers.get("content-type");
+      const [indicesRes, stocksRes] = await Promise.all([
+        fetch("/api/market-indices"),
+        fetch("/api/popular-stocks-prices")
+      ]);
+
+      if (indicesRes.ok) {
+        const contentType = indicesRes.headers.get("content-type");
         if (contentType && contentType.includes("application/json")) {
-          const data = await res.json();
+          const data = await indicesRes.json();
           setMarketIndices(data);
-        } else {
-          throw new Error("JSON 형식이 아닙니다.");
+        }
+      }
+
+      if (stocksRes.ok) {
+        const contentType = stocksRes.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+          const data = await stocksRes.json();
+          setPopularStocks(data);
         }
       }
     } catch (e) {
-      console.error("Failed to fetch indices", e);
+      console.error("Failed to refresh market data", e);
     } finally {
       setLoadingIndices(false);
-    }
-  };
-
-  const fetchPopularStocks = async () => {
-    try {
-      const res = await fetch("/api/popular-stocks-prices");
-      if (res.ok) {
-        const contentType = res.headers.get("content-type");
-        if (contentType && contentType.includes("application/json")) {
-          const data = await res.json();
-          setPopularStocks(data);
-        } else {
-          throw new Error("JSON 형식이 아닙니다.");
-        }
-      }
-    } catch (e) {
-      console.error("Failed to fetch popular stocks", e);
     }
   };
 
@@ -568,9 +568,9 @@ export default function App() {
           </div>
           <button 
             id="refresh-indices-btn"
-            onClick={fetchMarketIndices} 
+            onClick={handleRefreshAll} 
             disabled={loadingIndices} 
-            title="시장 인덱스 새로고침" 
+            title="실시간 시세 새로고침" 
             className="p-1.5 hover:bg-white/5 rounded-lg transition-colors text-gray-400 hover:text-white"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loadingIndices ? "animate-spin" : ""}`} />
