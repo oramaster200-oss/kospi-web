@@ -86,8 +86,13 @@ export default function App() {
     try {
       const res = await fetch("/api/market-indices");
       if (res.ok) {
-        const data = await res.json();
-        setMarketIndices(data);
+        const contentType = res.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+          const data = await res.json();
+          setMarketIndices(data);
+        } else {
+          throw new Error("JSON 형식이 아닙니다.");
+        }
       }
     } catch (e) {
       console.error("Failed to fetch indices", e);
@@ -100,8 +105,13 @@ export default function App() {
     try {
       const res = await fetch("/api/popular-stocks");
       if (res.ok) {
-        const data = await res.json();
-        setPopularStocks(data);
+        const contentType = res.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+          const data = await res.json();
+          setPopularStocks(data);
+        } else {
+          throw new Error("JSON 형식이 아닙니다.");
+        }
       }
     } catch (e) {
       console.error("Failed to fetch popular stocks", e);
@@ -120,9 +130,18 @@ export default function App() {
         body: JSON.stringify({ query: query.trim() })
       });
       
+      const contentType = res.headers.get("content-type");
       if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.error || "주식 정보를 불러오는데 실패했습니다.");
+        if (contentType && contentType.includes("application/json")) {
+          const errData = await res.json();
+          throw new Error(errData.error || "주식 정보를 불러오는데 실패했습니다.");
+        } else {
+          throw new Error("서버와의 통신에 실패했습니다. (API가 존재하지 않거나 작동하지 않음)");
+        }
+      }
+      
+      if (!contentType || !contentType.includes("application/json")) {
+        throw new Error("서버 응답이 올바르지 않은 형식(HTML 등)입니다. 배포 환경을 확인하세요.");
       }
       
       const data: StockAnalysis = await res.json();
