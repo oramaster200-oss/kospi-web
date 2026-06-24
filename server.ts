@@ -471,7 +471,7 @@ app.post("/api/verify-password", (req, res) => {
   }
 });
 
-// 1. API: Get Korean Market Indices (KOSPI & KOSDAQ) with current trends
+// 1. API: Get Korean Market Indices (KOSPI & KOSDAQ) via Yahoo Finance
 app.get("/api/market-indices", async (req, res) => {
   try {
     // 1) 캐시 확인
@@ -480,58 +480,58 @@ app.get("/api/market-indices", async (req, res) => {
       console.log("[Cache HIT] market_indices");
       return res.json(cached);
     }
-    console.log("[Cache MISS] market_indices — fetching fresh data");
+    console.log("[Cache MISS] market_indices — fetching from Yahoo Finance");
 
-    if (!apiKey) {
-      const payload = {
-        kospi:  { value: "2,682.43", change: "+14.50", percent: "+0.54%", trend: "BULLISH" },
-        kosdaq: { value: "852.12",   change: "-2.11",  percent: "-0.25%", trend: "BEARISH" },
-        statusSummary: "코스피는 외국인과 기관의 매수세에 힘입어 상승 마감했으나, 코스닥은 시총 상위 2차전지주의 약세로 하락 마감했습니다.",
-        dataSource: "mock" as const,
+    // 2) Yahoo Finance v8 chart API로 KOSPI(^KS11), KOSDAQ(^KQ11) 조회
+    const fetchIndex = async (ticker: string) => {
+      const r = await fetch(
+        `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?range=1d&interval=1d`,
+        { headers: { "User-Agent": "Mozilla/5.0" } }
+      );
+      if (!r.ok) throw new Error(`Yahoo chart ${ticker}: ${r.status}`);
+      const j: any = await r.json();
+      const res = j.chart?.result?.[0];
+      if (!res) throw new Error(`No data for ${ticker}`);
+      const meta = res.meta;
+      return {
+        price:         meta.regularMarketPrice as number,
+        prevClose:     meta.chartPreviousClose as number,
+        change:        (meta.regularMarketPrice - meta.chartPreviousClose) as number,
+        changePercent: ((meta.regularMarketPrice - meta.chartPreviousClose) / meta.chartPreviousClose * 100) as number,
       };
-      await setCachedMarketIndices(payload).catch(console.warn);
-      return res.json({ ...payload, updatedAt: new Date().toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" }) });
-    }
+    };
 
-    // 2) Gemini 호출
-    const prompt = `Get the latest KOSPI and KOSDAQ index figures, their daily points change and percentage changes, along with a brief 1-sentence market overview in Korean.
-You MUST return the output ONLY as a raw, valid JSON object with the following structure:
-{
-  "kospi": {
-    "value": "e.g. 2,642.50",
-    "change": "e.g. +12.30",
-    "percent": "e.g. +0.47%",
-    "trend": "BULLISH" | "BEARISH" | "NEUTRAL"
-  },
-  "kosdaq": {
-    "value": "e.g. 865.20",
-    "change": "e.g. -3.10",
-    "percent": "e.g. -0.36%",
-    "trend": "BULLISH" | "BEARISH" | "NEUTRAL"
-  },
-  "statusSummary": "Korean summary sentence"
-}
-Return only the raw JSON. Do not write markdown wrapping, other text, or explanation.`;
+    const [kospiD, kosdaqD] = await Promise.all([fetchIndex("^KS11"), fetchIndex("^KQ11")]);
 
-    const response = await generateContentWithRetry({
-      contents: prompt,
-      config: {
-        systemInstruction: "You are an expert market analyst. Provide up-to-date market index data.",
-        tools: [{ googleSearch: {} }]
-      }
-    });
+    const fmt  = (n: number) => n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const sign = (n: number) => n >= 0 ? "+" : "";
 
-    const parsed = parseGeminiResponse(response.text || "{}");
-    const result = { ...parsed, dataSource: "realtime" as const };
+    const result = {
+      kospi: {
+        value:   fmt(kospiD.price),
+        change:  `${sign(kospiD.change)}${fmt(kospiD.change)}`,
+        percent: `${sign(kospiD.changePercent)}${kospiD.changePercent.toFixed(2)}%`,
+        trend:   (kospiD.changePercent >= 0 ? "BULLISH" : "BEARISH") as "BULLISH" | "BEARISH",
+      },
+      kosdaq: {
+        value:   fmt(kosdaqD.price),
+        change:  `${sign(kosdaqD.change)}${fmt(kosdaqD.change)}`,
+        percent: `${sign(kosdaqD.changePercent)}${kosdaqD.changePercent.toFixed(2)}%`,
+        trend:   (kosdaqD.changePercent >= 0 ? "BULLISH" : "BEARISH") as "BULLISH" | "BEARISH",
+      },
+      statusSummary: `KOSPI ${fmt(kospiD.price)} (${sign(kospiD.changePercent)}${kospiD.changePercent.toFixed(2)}%), KOSDAQ ${fmt(kosdaqD.price)} (${sign(kosdaqD.changePercent)}${kosdaqD.changePercent.toFixed(2)}%)`,
+      dataSource: "realtime" as const,
+    };
+
     await setCachedMarketIndices(result).catch(console.warn);
     return res.json({ ...result, updatedAt: new Date().toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" }) });
 
   } catch (error: any) {
-    console.error("Error fetching market indices:", error);
+    console.error("Error fetching market indices:", error.message);
     const fallback = {
-      kospi:  { value: "2,682.43", change: "+14.50", percent: "+0.54%", trend: "BULLISH" },
-      kosdaq: { value: "852.12",   change: "-2.11",  percent: "-0.25%", trend: "BEARISH" },
-      statusSummary: "마켓 정보를 가져오는 중 일시적인 지연이 발생했으나 KOSPI 지수는 2680선 부근에서 견조한 흐름을 유지 중입니다.",
+      kospi:  { value: "2,682.43", change: "+14.50", percent: "+0.54%", trend: "BULLISH" as const },
+      kosdaq: { value: "852.12",   change: "-2.11",  percent: "-0.25%", trend: "BEARISH" as const },
+      statusSummary: "시장 지수를 가져오는 중 일시적인 오류가 발생했습니다.",
       dataSource: "mock" as const,
     };
     await setCachedMarketIndices(fallback).catch(console.warn);
