@@ -572,6 +572,14 @@ app.post("/api/analyze-stock", async (req, res) => {
 
 // 3. API: Batch fetch popular stock prices and change percents from Naver Finance (real-time)
 app.get("/api/popular-stocks-prices", async (req, res) => {
+  // 1) 캐시 확인
+  const cached = await getCachedPopularStocks().catch(() => null);
+  if (cached) {
+    console.log("[Cache HIT] popular_stocks");
+    return res.json(cached);
+  }
+  console.log("[Cache MISS] popular_stocks — fetching from Naver Finance");
+
   const defaultPopular = [
     { symbol: "005930", name: "삼성전자", category: "반도체", basePrice: 334500 },
     { symbol: "000660", name: "SK하이닉스", category: "반도체", basePrice: 2621000 },
