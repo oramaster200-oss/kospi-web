@@ -1112,8 +1112,8 @@ export default function App() {
                             >
                               <GripVertical className="w-3.5 h-3.5" />
                             </button>
-                            <div className="flex flex-col min-w-0">
-                              <span className="font-bold text-white text-xs md:text-sm truncate">{stock.name}</span>
+                            <div className="flex flex-col min-w-0 max-w-[80px] sm:max-w-[120px] md:max-w-[160px]">
+                              <span className="font-bold text-white text-[11px] md:text-sm truncate">{stock.name}</span>
                               <span className="text-[9px] text-gray-500 font-mono">{stock.symbol}</span>
                             </div>
                           </div>
