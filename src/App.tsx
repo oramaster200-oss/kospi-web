@@ -26,6 +26,14 @@ import {
   WatchlistItem 
 } from "./types";
 
+function generateUserId(): string {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0;
+    return (c === "x" ? r : (r & 0x3 | 0x8)).toString(16);
+  });
+}
+
 const DEFAULT_USER_STOCKS = [
   { symbol: "005930", name: "삼성전자" },
   { symbol: "000660", name: "SK하이닉스" },
@@ -78,6 +86,20 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
+  // Sync
+  const [userId, setUserId] = useState<string>(() => {
+    const existing = localStorage.getItem("kospi_user_id");
+    if (existing) return existing;
+    const newId = generateUserId();
+    localStorage.setItem("kospi_user_id", newId);
+    return newId;
+  });
+  const [syncReady, setSyncReady] = useState(false);
+  const [showSyncPanel, setShowSyncPanel] = useState(false);
+  const [syncIdInput, setSyncIdInput] = useState("");
+  const [syncStatus, setSyncStatus] = useState<"idle" | "saving" | "saved">("idle");
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Market indices
   const [marketIndices, setMarketIndices] = useState<MarketIndicesResponse | null>(null);
   const [loadingIndices, setLoadingIndices] = useState(false);
@@ -148,18 +170,57 @@ export default function App() {
     localStorage.setItem("kospi_user_stocks", JSON.stringify(userStockList));
   }, [userStockList]);
 
+  // Debounced Supabase sync save
+  useEffect(() => {
+    if (!syncReady) return;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    setSyncStatus("saving");
+    saveTimerRef.current = setTimeout(async () => {
+      try {
+        await fetch("/api/user-sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId, watchlist, userStocks: userStockList, portfolio })
+        });
+        setSyncStatus("saved");
+        setTimeout(() => setSyncStatus("idle"), 2000);
+      } catch {
+        setSyncStatus("idle");
+      }
+    }, 1000);
+  }, [watchlist, userStockList, portfolio, syncReady]);
+
   // Fetch initial market data & popular stocks and set up real-time updates
   useEffect(() => {
     if (isAuthenticated) {
+      loadUserData(userId);
       handleRefreshAll();
 
       const interval = setInterval(() => {
         handleRefreshAll();
-      }, 20000); // refresh every 20 seconds for authentic real-time simulation
+      }, 20000);
 
       return () => clearInterval(interval);
     }
   }, [isAuthenticated]);
+
+  const loadUserData = async (uid: string) => {
+    try {
+      const res = await fetch(`/api/user-sync?userId=${uid}`);
+      if (!res.ok) throw new Error("sync failed");
+      const data = await res.json();
+      if (data.watchlist?.length) setWatchlist(data.watchlist);
+      if (data.userStocks?.length) {
+        setUserStockList(data.userStocks);
+        userStockListRef.current = data.userStocks;
+      }
+      if (data.portfolio?.length) setPortfolio(data.portfolio);
+    } catch {
+      console.warn("[Sync] 서버 동기화 실패, 로컬 데이터 사용");
+    } finally {
+      setSyncReady(true);
+    }
+  };
 
   const handleRefreshAll = async () => {
     setLoadingIndices(true);
@@ -794,6 +855,51 @@ export default function App() {
                 </tbody>
               </table>
             </div>
+          </div>
+
+          {/* Sync ID Panel */}
+          <div className="mt-4 pt-3 border-t border-[#1C1E26]">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] text-gray-500 font-semibold uppercase tracking-wider">동기화 ID</span>
+              <div className="flex items-center gap-2">
+                {syncStatus === "saving" && <span className="text-[9px] text-yellow-400">저장 중...</span>}
+                {syncStatus === "saved" && <span className="text-[9px] text-emerald-400">저장됨</span>}
+                <span className="text-[10px] text-gray-400 font-mono">{userId.slice(0, 8)}…</span>
+                <button
+                  onClick={() => navigator.clipboard.writeText(userId)}
+                  className="text-[10px] text-blue-400 hover:text-blue-300 transition-colors"
+                  title="ID 복사"
+                >복사</button>
+                <button
+                  onClick={() => { setShowSyncPanel(f => !f); setSyncIdInput(""); }}
+                  className="text-[10px] text-gray-500 hover:text-gray-300 transition-colors"
+                >변경</button>
+              </div>
+            </div>
+            {showSyncPanel && (
+              <div className="mt-2 flex gap-1.5">
+                <input
+                  type="text"
+                  placeholder="다른 기기의 ID 붙여넣기"
+                  value={syncIdInput}
+                  onChange={e => setSyncIdInput(e.target.value)}
+                  className="flex-1 bg-[#0D0E13] border border-[#23252E] focus:border-blue-500 rounded-lg px-2 py-1.5 text-xs text-white font-mono placeholder-gray-600 outline-none"
+                />
+                <button
+                  onClick={() => {
+                    const trimmed = syncIdInput.trim();
+                    if (!trimmed) return;
+                    localStorage.setItem("kospi_user_id", trimmed);
+                    setUserId(trimmed);
+                    setSyncReady(false);
+                    loadUserData(trimmed);
+                    setSyncIdInput("");
+                    setShowSyncPanel(false);
+                  }}
+                  className="px-2 py-1 bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold rounded-lg transition-colors"
+                >적용</button>
+              </div>
+            )}
           </div>
 
           {/* Quick Stats Summary */}

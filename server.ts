@@ -734,6 +734,47 @@ app.get("/api/stock-history", async (req, res) => {
   }
 });
 
+// ─── User Data Sync ──────────────────────────────────────────────────────────
+
+app.get("/api/user-sync", async (req, res) => {
+  const userId = req.query.userId as string;
+  if (!userId) return res.status(400).json({ error: "userId required" });
+  if (!supabase) return res.status(503).json({ error: "Supabase not configured" });
+  try {
+    const { data } = await supabase
+      .from("user_data")
+      .select("*")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (!data) return res.json({ watchlist: [], userStocks: [], portfolio: [] });
+    return res.json({
+      watchlist: data.watchlist || [],
+      userStocks: data.user_stocks || [],
+      portfolio: data.portfolio || []
+    });
+  } catch (e: any) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/user-sync", async (req, res) => {
+  const { userId, watchlist, userStocks, portfolio } = req.body;
+  if (!userId) return res.status(400).json({ error: "userId required" });
+  if (!supabase) return res.status(503).json({ error: "Supabase not configured" });
+  try {
+    await supabase.from("user_data").upsert({
+      user_id: userId,
+      watchlist,
+      user_stocks: userStocks,
+      portfolio,
+      updated_at: new Date().toISOString()
+    });
+    return res.json({ ok: true });
+  } catch (e: any) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
 // Serve frontend build static files or connect to Vite middleware
 async function setupServer() {
   if (process.env.NODE_ENV !== "production") {
