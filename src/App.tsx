@@ -1022,13 +1022,6 @@ export default function App() {
                             >
                               ★
                             </button>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); handleRemoveStock(stock.symbol); }}
-                              className="text-[11px] text-gray-700 hover:text-rose-400 transition-colors focus:outline-none leading-none"
-                              title="목록에서 제거"
-                            >
-                              ✕
-                            </button>
                             <div className="flex flex-col">
                               <span className="font-bold text-white text-xs md:text-sm">{stock.name}</span>
                               <span className="text-[9px] text-gray-500 font-mono">{stock.symbol}</span>
@@ -1043,16 +1036,25 @@ export default function App() {
                           {isMock && <span className="ml-1 text-[9px] text-amber-500 font-normal">~</span>}
                         </td>
                         <td className="py-2.5 text-center pl-2">
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleSearch(stock.name); }}
-                            className={`px-2 py-1 rounded-lg text-[10px] font-black tracking-tight border transition-all cursor-pointer ${
-                              isCurrent
-                                ? "bg-blue-600 border-blue-500 text-white shadow-md"
-                                : "bg-[#16171D] border-[#23252E] text-blue-400 hover:bg-blue-500/10 hover:border-blue-500/30"
-                            }`}
-                          >
-                            AI 분석
-                          </button>
+                          <div className="flex items-center gap-1 justify-center">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleSearch(stock.name); }}
+                              className={`px-2 py-1 rounded-lg text-[10px] font-black tracking-tight border transition-all cursor-pointer ${
+                                isCurrent
+                                  ? "bg-blue-600 border-blue-500 text-white shadow-md"
+                                  : "bg-[#16171D] border-[#23252E] text-blue-400 hover:bg-blue-500/10 hover:border-blue-500/30"
+                              }`}
+                            >
+                              AI 분석
+                            </button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleRemoveStock(stock.symbol); }}
+                              className="text-[11px] text-gray-700 hover:text-rose-400 transition-colors focus:outline-none leading-none px-1"
+                              title="목록에서 제거"
+                            >
+                              ✕
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
