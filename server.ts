@@ -326,7 +326,7 @@ app.post("/api/analyze-stock", async (req, res) => {
 
 // 3. API: Batch fetch popular stock prices and change percents from Naver Finance (real-time)
 app.get("/api/popular-stocks-prices", async (req, res) => {
-  const popular = [
+  const defaultPopular = [
     { symbol: "005930", name: "삼성전자", category: "반도체", basePrice: 334500 },
     { symbol: "000660", name: "SK하이닉스", category: "반도체", basePrice: 2621000 },
     { symbol: "373220", name: "LG에너지솔루션", category: "2차전지", basePrice: 342000 },
@@ -339,8 +339,32 @@ app.get("/api/popular-stocks-prices", async (req, res) => {
     { symbol: "068270", name: "셀트리온", category: "제약/바이오", basePrice: 173200 }
   ];
 
+  // Accept custom symbol list from client
+  const symbolsParam = req.query.symbols as string | undefined;
+  let popular: typeof defaultPopular;
+
+  if (symbolsParam !== undefined) {
+    const requestedSymbols = symbolsParam
+      .split(',')
+      .map(s => s.trim())
+      .filter(s => /^\d{6}$/.test(s))
+      .slice(0, 30);
+
+    if (requestedSymbols.length === 0) {
+      return res.json([]);
+    }
+
+    popular = requestedSymbols.map(sym => {
+      const known = defaultPopular.find(p => p.symbol === sym);
+      return known || { symbol: sym, name: sym, category: "기타", basePrice: 50000 };
+    });
+  } else {
+    popular = defaultPopular;
+  }
+
   try {
-    const url = "https://polling.finance.naver.com/api/realtime?query=SERVICE_ITEM:005930,000660,373220,207940,005380,005490,035420,035720,000270,068270";
+    const symbolList = popular.map(s => s.symbol).join(',');
+    const url = `https://polling.finance.naver.com/api/realtime?query=SERVICE_ITEM:${symbolList}`;
     const response = await fetch(url, {
       headers: { "User-Agent": "Mozilla/5.0" }
     });
@@ -358,7 +382,7 @@ app.get("/api/popular-stocks-prices", async (req, res) => {
         const sign = (item.rf === "1" || item.rf === "2") ? "+" : (item.rf === "4" || item.rf === "5") ? "-" : "";
         return {
           symbol: item.cd,
-          name: found?.name || item.nm,
+          name: item.nm || found?.name || item.cd,
           category: found?.category || "기타",
           price: item.nv.toLocaleString("ko-KR"),
           changePercent: `${sign}${item.cr}%`

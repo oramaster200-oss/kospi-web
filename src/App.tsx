@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -25,6 +25,19 @@ import {
   PortfolioItem, 
   WatchlistItem 
 } from "./types";
+
+const DEFAULT_USER_STOCKS = [
+  { symbol: "005930", name: "삼성전자" },
+  { symbol: "000660", name: "SK하이닉스" },
+  { symbol: "373220", name: "LG에너지솔루션" },
+  { symbol: "207940", name: "삼성바이오로직스" },
+  { symbol: "005380", name: "현대차" },
+  { symbol: "005490", name: "POSCO홀딩스" },
+  { symbol: "035420", name: "NAVER" },
+  { symbol: "035720", name: "카카오" },
+  { symbol: "000270", name: "기아" },
+  { symbol: "068270", name: "셀트리온" },
+];
 
 export default function App() {
   // Authentication states
@@ -69,6 +82,20 @@ export default function App() {
   const [marketIndices, setMarketIndices] = useState<MarketIndicesResponse | null>(null);
   const [loadingIndices, setLoadingIndices] = useState(false);
   
+  // User-managed stock list
+  const [userStockList, setUserStockList] = useState<{ symbol: string; name: string }[]>(() => {
+    const saved = localStorage.getItem("kospi_user_stocks");
+    return saved ? JSON.parse(saved) : DEFAULT_USER_STOCKS;
+  });
+  const userStockListRef = useRef(userStockList);
+  userStockListRef.current = userStockList;
+
+  // Add stock form state
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [addSymbol, setAddSymbol] = useState("");
+  const [addName, setAddName] = useState("");
+  const [addError, setAddError] = useState<string | null>(null);
+
   // Recommendations and metadata
   const [popularStocks, setPopularStocks] = useState<PopularStock[]>([]);
   
@@ -106,6 +133,10 @@ export default function App() {
     localStorage.setItem("kospi_portfolio", JSON.stringify(portfolio));
   }, [portfolio]);
 
+  useEffect(() => {
+    localStorage.setItem("kospi_user_stocks", JSON.stringify(userStockList));
+  }, [userStockList]);
+
   // Fetch initial market data & popular stocks and set up real-time updates
   useEffect(() => {
     if (isAuthenticated) {
@@ -123,9 +154,10 @@ export default function App() {
     setLoadingIndices(true);
     try {
       const timestamp = Date.now();
+      const symbols = userStockListRef.current.map(s => s.symbol).join(',');
       const [indicesRes, stocksRes] = await Promise.all([
         fetch(`/api/market-indices?_t=${timestamp}`),
-        fetch(`/api/popular-stocks-prices?_t=${timestamp}`)
+        fetch(`/api/popular-stocks-prices?symbols=${symbols}&_t=${timestamp}`)
       ]);
 
       if (indicesRes.ok) {
@@ -258,6 +290,37 @@ export default function App() {
     };
 
     setCurrentStock(fallback);
+  };
+
+  // Manage user stock list
+  const handleAddStock = () => {
+    const sym = addSymbol.trim();
+    if (!/^\d{6}$/.test(sym)) {
+      setAddError("6자리 숫자 종목코드를 입력해주세요.");
+      return;
+    }
+    if (userStockList.some(s => s.symbol === sym)) {
+      setAddError("이미 목록에 있는 종목입니다.");
+      return;
+    }
+    const name = addName.trim() || sym;
+    const newList = [...userStockList, { symbol: sym, name }];
+    setUserStockList(newList);
+    userStockListRef.current = newList;
+    setPopularStocks(prev => [...prev, { symbol: sym, name, category: "기타", price: "-", changePercent: "0.00%" }]);
+    setAddSymbol("");
+    setAddName("");
+    setAddError(null);
+    setShowAddForm(false);
+    handleRefreshAll();
+  };
+
+  const handleRemoveStock = (symbol: string) => {
+    const newList = userStockList.filter(s => s.symbol !== symbol);
+    setUserStockList(newList);
+    userStockListRef.current = newList;
+    setPopularStocks(prev => prev.filter(s => s.symbol !== symbol));
+    if (currentStock?.symbol === symbol) setCurrentStock(null);
   };
 
   // Add stock to watchlist
@@ -605,7 +668,17 @@ export default function App() {
                 <Bookmark className="w-3.5 h-3.5 text-blue-400" />
                 선호/추천 종목
               </h2>
-              <span className="text-[10px] bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded-full font-mono">KOSPI</span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => { setShowAddForm(f => !f); setAddError(null); setAddSymbol(""); setAddName(""); }}
+                  className="flex items-center gap-1 text-[10px] bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 px-2 py-1 rounded-lg border border-blue-500/20 font-bold transition-colors"
+                  title="종목 추가"
+                >
+                  <Plus className="w-3 h-3" />
+                  종목 추가
+                </button>
+                <span className="text-[10px] bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded-full font-mono">KOSPI</span>
+              </div>
             </div>
             
             {/* Real-time search quick select table */}
@@ -620,18 +693,47 @@ export default function App() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#1C1E26]">
+                  {showAddForm && (
+                    <tr className="bg-[#16171D]">
+                      <td colSpan={4} className="py-2 px-1">
+                        <div className="flex flex-col gap-2">
+                          <div className="flex gap-1.5">
+                            <input
+                              type="text"
+                              placeholder="종목코드 (6자리)"
+                              value={addSymbol}
+                              onChange={(e) => setAddSymbol(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                              className="w-28 bg-[#0D0E13] border border-[#23252E] focus:border-blue-500 rounded-lg px-2 py-1.5 text-xs text-white font-mono placeholder-gray-600 outline-none"
+                            />
+                            <input
+                              type="text"
+                              placeholder="종목명 (선택)"
+                              value={addName}
+                              onChange={(e) => setAddName(e.target.value)}
+                              className="flex-1 bg-[#0D0E13] border border-[#23252E] focus:border-blue-500 rounded-lg px-2 py-1.5 text-xs text-white placeholder-gray-600 outline-none"
+                            />
+                          </div>
+                          {addError && <p className="text-[10px] text-rose-400 px-1">{addError}</p>}
+                          <div className="flex gap-1.5">
+                            <button onClick={handleAddStock} className="flex-1 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold rounded-lg transition-colors">추가</button>
+                            <button onClick={() => { setShowAddForm(false); setAddError(null); }} className="flex-1 py-1.5 bg-[#23252E] hover:bg-[#2A2D3A] text-gray-300 text-[11px] font-bold rounded-lg transition-colors">취소</button>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
                   {popularStocks.map((stock) => {
                     const isWatched = watchlist.some(w => w.symbol === stock.symbol);
                     const isCurrent = currentStock?.symbol === stock.symbol;
                     const isPositive = stock.changePercent.startsWith("+");
                     return (
-                      <tr 
+                      <tr
                         key={stock.symbol}
                         className={`hover:bg-[#1A1B24] transition-colors ${isCurrent ? "bg-[#1E212E]" : ""}`}
                       >
                         <td className="py-2.5 pr-2">
-                          <div className="flex items-center gap-1.5">
-                            <button 
+                          <div className="flex items-center gap-1">
+                            <button
                               onClick={(e) => {
                                 e.stopPropagation();
                                 toggleWatchlist(stock);
@@ -640,6 +742,13 @@ export default function App() {
                               title={isWatched ? "관심종목 해제" : "관심종목 추가"}
                             >
                               ★
+                            </button>
+                            <button
+                              onClick={() => handleRemoveStock(stock.symbol)}
+                              className="text-[11px] text-gray-700 hover:text-rose-400 transition-colors focus:outline-none leading-none"
+                              title="목록에서 제거"
+                            >
+                              ✕
                             </button>
                             <div className="flex flex-col">
                               <span className="font-bold text-white text-xs md:text-sm">{stock.name}</span>
