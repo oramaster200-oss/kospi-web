@@ -845,7 +845,7 @@ export default function App() {
         </form>
 
         {/* Market Status and Mini Index Widget */}
-        <div className="flex items-center gap-4 bg-[#12131A] border border-[#23252E] px-4 py-2 rounded-2xl">
+        <div className="flex items-center gap-2 md:gap-4 flex-wrap w-full md:w-auto bg-[#12131A] border border-[#23252E] px-3 md:px-4 py-2 rounded-2xl overflow-x-auto">
           <div
             onClick={handleRefreshAll}
             className="flex items-center gap-2 cursor-pointer hover:bg-white/5 px-2 py-1.5 rounded-xl transition-colors"
@@ -923,11 +923,12 @@ export default function App() {
               새로고침
             </button>
           </div>
+          <div className="overflow-x-auto">
           <table className="w-full border-collapse">
             <thead className="text-[10px] text-gray-500 uppercase font-black border-b border-[#23252E]">
               <tr>
                 <th className="pb-2 text-left">종목</th>
-                <th className="pb-2 text-right">현재가 (USD)</th>
+                <th className="pb-2 text-right"><span className="hidden sm:inline">현재가 </span>USD</th>
                 <th className="pb-2 text-right">등락률</th>
                 <th className="pb-2 text-center">분석</th>
               </tr>
@@ -973,6 +974,7 @@ export default function App() {
               })}
             </tbody>
           </table>
+          </div>
         </section>
 
         {/* BENTO 1: Left Navigation & Watchlist (col-span-4) */}
@@ -1006,7 +1008,7 @@ export default function App() {
             </div>
             
             {/* Real-time search quick select table */}
-            <div className="overflow-x-auto overflow-y-auto max-h-[380px] pr-1">
+            <div className="overflow-x-auto overflow-y-auto max-h-[260px] md:max-h-[380px] pr-1">
               <table className="w-full border-collapse">
                 <thead className="text-[10px] text-gray-500 uppercase font-black border-b border-[#23252E]">
                   <tr>
@@ -1185,14 +1187,14 @@ export default function App() {
         </div>{/* end left column wrapper */}
 
         {/* BENTO 2: Center - Hero Stock details & Interactive Chart (col-span-5) */}
-        <section id="bento-chart" className="md:col-span-5 bg-[#12131A] border border-[#23252E] rounded-3xl p-6 flex flex-col justify-between relative shadow-xl min-h-[420px]">
+        <section id="bento-chart" className="md:col-span-5 bg-[#12131A] border border-[#23252E] rounded-3xl p-4 md:p-6 flex flex-col justify-between relative shadow-xl min-h-[300px] md:min-h-[420px]">
           {currentStock ? (
             <>
               {/* Stock Title and Indicators */}
-              <div className="flex justify-between items-start gap-4">
+              <div className="flex flex-wrap justify-between items-start gap-3 md:gap-4">
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
-                    <h2 className="text-2xl font-black text-white">{currentStock.stockName}</h2>
+                    <h2 className="text-xl md:text-2xl font-black text-white">{currentStock.stockName}</h2>
                     <span className="text-xs bg-gray-800 text-gray-400 px-2 py-0.5 rounded font-mono font-medium">{currentStock.symbol}</span>
                     {currentStock.dataSource === "mock" && (
                       <span className="text-[10px] bg-amber-500/15 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
@@ -1216,7 +1218,7 @@ export default function App() {
                     )}
                   </div>
                   <div className="flex flex-wrap items-center gap-3 mt-2">
-                    <span className="text-4xl font-mono font-black tracking-tight text-white">{currentStock.currentPrice}</span>
+                    <span className="text-2xl md:text-4xl font-mono font-black tracking-tight text-white">{currentStock.currentPrice}</span>
                     <div className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-sm font-bold ${
                       currentStock.priceChangePercent.startsWith("+") 
                         ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" 
