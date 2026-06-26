@@ -103,6 +103,7 @@ export default function App() {
   // Market indices
   const [marketIndices, setMarketIndices] = useState<MarketIndicesResponse | null>(null);
   const [loadingIndices, setLoadingIndices] = useState(false);
+  const [loadingLeftPanel, setLoadingLeftPanel] = useState(false);
 
   // Overseas ETF stocks
   const [overseasStocks, setOverseasStocks] = useState<{ symbol: string; price: string; changePercent: string; dataSource: string }[]>([]);
@@ -198,12 +199,6 @@ export default function App() {
     if (isAuthenticated) {
       loadUserData(userId);
       handleRefreshAll();
-
-      const interval = setInterval(() => {
-        handleRefreshAll();
-      }, 20000);
-
-      return () => clearInterval(interval);
     }
   }, [isAuthenticated]);
 
@@ -271,6 +266,40 @@ export default function App() {
       console.error("Failed to refresh market data", e);
     } finally {
       setLoadingIndices(false);
+    }
+  };
+
+  const handleRefreshLeftPanel = async () => {
+    setLoadingLeftPanel(true);
+    try {
+      const timestamp = Date.now();
+      const symbols = userStockListRef.current.map(s => s.symbol).join(',');
+      const [stocksRes, overseasRes] = await Promise.all([
+        fetch(`/api/popular-stocks-prices?symbols=${symbols}&_t=${timestamp}`),
+        fetch(`/api/overseas-stocks?_t=${timestamp}`)
+      ]);
+
+      if (stocksRes.ok) {
+        const data = await stocksRes.json();
+        const userNames = Object.fromEntries(
+          userStockListRef.current
+            .filter(s => s.name && s.name !== s.symbol)
+            .map(s => [s.symbol, s.name])
+        );
+        setPopularStocks(prev => data.map((s: any) => ({
+          ...s,
+          name: userNames[s.symbol] || s.name,
+        })));
+      }
+
+      if (overseasRes.ok) {
+        const data = await overseasRes.json();
+        setOverseasStocks(data);
+      }
+    } catch (e) {
+      console.error("Failed to refresh left panel", e);
+    } finally {
+      setLoadingLeftPanel(false);
     }
   };
 
@@ -793,10 +822,21 @@ export default function App() {
 
         {/* BENTO 0: Overseas ETF fixed list */}
         <section className="bg-[#12131A] border border-[#23252E] rounded-3xl p-4 shadow-xl">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1.5 mb-3">
-            <TrendingUp className="w-3.5 h-3.5 text-indigo-400" />
-            해외 ETF
-          </h2>
+          <div className="flex justify-between items-center mb-3">
+            <h2 className="text-xs font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
+              <TrendingUp className="w-3.5 h-3.5 text-indigo-400" />
+              해외 ETF
+            </h2>
+            <button
+              onClick={handleRefreshLeftPanel}
+              disabled={loadingLeftPanel}
+              className="flex items-center gap-1 text-[10px] bg-[#1A1B24] hover:bg-[#23252E] text-gray-400 hover:text-white px-2 py-1 rounded-lg border border-[#23252E] font-bold transition-colors"
+              title="시세 새로고침"
+            >
+              <RefreshCw className={`w-3 h-3 ${loadingLeftPanel ? "animate-spin" : ""}`} />
+              새로고침
+            </button>
+          </div>
           <table className="w-full border-collapse">
             <thead className="text-[10px] text-gray-500 uppercase font-black border-b border-[#23252E]">
               <tr>
@@ -843,6 +883,15 @@ export default function App() {
                 선호/추천 종목
               </h2>
               <div className="flex items-center gap-2">
+                <button
+                  onClick={handleRefreshLeftPanel}
+                  disabled={loadingLeftPanel}
+                  className="flex items-center gap-1 text-[10px] bg-[#1A1B24] hover:bg-[#23252E] text-gray-400 hover:text-white px-2 py-1 rounded-lg border border-[#23252E] font-bold transition-colors"
+                  title="시세 새로고침"
+                >
+                  <RefreshCw className={`w-3 h-3 ${loadingLeftPanel ? "animate-spin" : ""}`} />
+                  새로고침
+                </button>
                 <button
                   onClick={() => { setShowAddForm(f => !f); setAddError(null); setAddSymbol(""); setAddName(""); }}
                   className="flex items-center gap-1 text-[10px] bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 px-2 py-1 rounded-lg border border-blue-500/20 font-bold transition-colors"
