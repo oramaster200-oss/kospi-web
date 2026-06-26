@@ -244,7 +244,15 @@ export default function App() {
         const contentType = stocksRes.headers.get("content-type");
         if (contentType && contentType.includes("application/json")) {
           const data = await stocksRes.json();
-          setPopularStocks(data);
+          const userNames = Object.fromEntries(
+            userStockListRef.current
+              .filter(s => s.name && s.name !== s.symbol)
+              .map(s => [s.symbol, s.name])
+          );
+          setPopularStocks(data.map((s: any) => ({
+            ...s,
+            name: userNames[s.symbol] || s.name
+          })));
         }
       }
     } catch (e) {
