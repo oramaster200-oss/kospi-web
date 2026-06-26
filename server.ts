@@ -633,10 +633,11 @@ app.get("/api/popular-stocks-prices", async (req, res) => {
     if (Array.isArray(datas) && datas.length > 0) {
       const merged = datas.map((item: any) => {
         const found = popular.find(p => p.symbol === item.cd);
+        const knownName = found && found.name !== found.symbol ? found.name : undefined;
         const sign = (item.rf === "1" || item.rf === "2") ? "+" : (item.rf === "4" || item.rf === "5") ? "-" : "";
         return {
           symbol: item.cd,
-          name: found?.name || item.nm || item.cd,
+          name: knownName || item.nm || item.cd,
           category: found?.category || "기타",
           price: item.nv.toLocaleString("ko-KR"),
           changePercent: `${sign}${item.cr}%`,
