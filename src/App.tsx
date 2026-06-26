@@ -274,10 +274,19 @@ export default function App() {
     try {
       const timestamp = Date.now();
       const symbols = userStockListRef.current.map(s => s.symbol).join(',');
-      const [stocksRes, overseasRes] = await Promise.all([
+      const [indicesRes, stocksRes, overseasRes] = await Promise.all([
+        fetch(`/api/market-indices?_t=${timestamp}`),
         fetch(`/api/popular-stocks-prices?symbols=${symbols}&_t=${timestamp}`),
         fetch(`/api/overseas-stocks?_t=${timestamp}`)
       ]);
+
+      if (indicesRes.ok) {
+        const contentType = indicesRes.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+          const data = await indicesRes.json();
+          setMarketIndices(data);
+        }
+      }
 
       if (stocksRes.ok) {
         const data = await stocksRes.json();
@@ -286,7 +295,7 @@ export default function App() {
             .filter(s => s.name && s.name !== s.symbol)
             .map(s => [s.symbol, s.name])
         );
-        setPopularStocks(prev => data.map((s: any) => ({
+        setPopularStocks(data.map((s: any) => ({
           ...s,
           name: userNames[s.symbol] || s.name,
         })));
