@@ -100,6 +100,28 @@ export default function App() {
   const [syncStatus, setSyncStatus] = useState<"idle" | "saving" | "saved">("idle");
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Pull-to-refresh
+  const touchStartY = useRef<number>(0);
+  const [pullDistance, setPullDistance] = useState(0);
+  const PULL_THRESHOLD = 65;
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartY.current = e.touches[0].clientY;
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (window.scrollY > 0) return;
+    const delta = e.touches[0].clientY - touchStartY.current;
+    if (delta > 0) setPullDistance(Math.min(delta, PULL_THRESHOLD + 20));
+  };
+
+  const handleTouchEnd = async () => {
+    if (pullDistance >= PULL_THRESHOLD && !loadingLeftPanel) {
+      await handleRefreshLeftPanel();
+    }
+    setPullDistance(0);
+  };
+
   // Market indices
   const [marketIndices, setMarketIndices] = useState<MarketIndicesResponse | null>(null);
   const [loadingIndices, setLoadingIndices] = useState(false);
@@ -729,8 +751,31 @@ export default function App() {
   }
 
   return (
-    <div id="kospi-app-container" className="min-h-screen bg-[#0A0B0E] text-[#E0E1E6] font-sans p-3 md:p-6 flex flex-col antialiased">
-      
+    <div
+      id="kospi-app-container"
+      className="min-h-screen bg-[#0A0B0E] text-[#E0E1E6] font-sans p-3 md:p-6 flex flex-col antialiased"
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+    >
+      {/* Pull-to-refresh indicator */}
+      {pullDistance > 0 && (
+        <div
+          className="fixed top-0 left-0 right-0 z-50 flex items-center justify-center transition-all"
+          style={{ height: `${pullDistance}px` }}
+        >
+          <div className="flex items-center gap-2 bg-[#12131A] border border-[#23252E] px-4 py-2 rounded-full shadow-lg">
+            <RefreshCw
+              className={`w-3.5 h-3.5 text-blue-400 transition-transform duration-200 ${pullDistance >= PULL_THRESHOLD ? "animate-spin" : ""}`}
+              style={{ transform: `rotate(${(pullDistance / PULL_THRESHOLD) * 360}deg)` }}
+            />
+            <span className="text-[11px] font-bold text-blue-400">
+              {pullDistance >= PULL_THRESHOLD ? "놓으면 새로고침" : "당겨서 새로고침"}
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* HEADER SECTION */}
       <header id="app-header" className="flex flex-col md:flex-row items-start md:items-center justify-between mb-6 gap-4 border-b border-[#1A1C24] pb-5">
         <div className="flex items-center gap-3">
