@@ -476,7 +476,46 @@ app.get("/api/debug-status", async (req, res) => {
   });
 });
 
-// 0.5. API: Verify application entry password
+// 0.5. API: Supabase connectivity test
+app.get("/api/test-supabase", async (req, res) => {
+  if (!supabase) {
+    return res.json({ ok: false, error: "Supabase client is null — SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY env var is missing" });
+  }
+  const testKey = "__test__";
+  const { error: upsertError } = await supabase.from("stock_analyses").upsert({
+    query_key: testKey,
+    symbol: "000000",
+    stock_name: "테스트",
+    current_price: "0",
+    price_change: "0",
+    price_change_percent: "0%",
+    highest_price: "0",
+    lowest_price: "0",
+    volume: "0",
+    analysis_result: "HOLD",
+    analysis_score: 0,
+    target_price: "0",
+    stop_loss_price: "0",
+    summary: "test",
+    strengths: [],
+    risks: [],
+    technical_indicators: [],
+    recent_news: [],
+    data_source: "mock",
+    updated_at: new Date().toISOString(),
+    expires_at: new Date(Date.now() + 60000).toISOString(),
+  }, { onConflict: "query_key" });
+
+  if (upsertError) {
+    return res.json({ ok: false, error: upsertError.message, details: upsertError.details, hint: upsertError.hint, code: upsertError.code });
+  }
+
+  // clean up test row
+  await supabase.from("stock_analyses").delete().eq("query_key", testKey);
+  return res.json({ ok: true, message: "Supabase upsert to stock_analyses succeeded!" });
+});
+
+// 0.6. API: Verify application entry password
 app.post("/api/verify-password", (req, res) => {
   const { password } = req.body;
   const correctPassword = process.env.APP_PASSWORD || "1234";
