@@ -9,8 +9,7 @@ import {
   AlertTriangle,
   Sparkles,
   ChevronRight,
-  ChevronUp,
-  ChevronDown,
+  GripVertical,
   DollarSign,
   Layers,
   Briefcase,
@@ -106,6 +105,12 @@ export default function App() {
   const touchStartY = useRef<number>(0);
   const [pullDistance, setPullDistance] = useState(0);
   const PULL_THRESHOLD = 65;
+
+  // Drag-and-drop reorder state
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const touchDragFrom = useRef<number | null>(null);
+  const touchDragTo = useRef<number | null>(null);
 
   const handleTouchStart = (e: React.TouchEvent) => {
     touchStartY.current = e.touches[0].clientY;
@@ -504,24 +509,17 @@ export default function App() {
     if (currentStock?.symbol === symbol) setCurrentStock(null);
   };
 
-  const handleMoveStock = (symbol: string, direction: "up" | "down") => {
-    const idx = userStockList.findIndex(s => s.symbol === symbol);
-    if (idx === -1) return;
-    if (direction === "up" && idx === 0) return;
-    if (direction === "down" && idx === userStockList.length - 1) return;
-    const swapIdx = direction === "up" ? idx - 1 : idx + 1;
-    const newList = [...userStockList];
-    [newList[idx], newList[swapIdx]] = [newList[swapIdx], newList[idx]];
-    setUserStockList(newList);
-    userStockListRef.current = newList;
-    setPopularStocks(prev => {
-      const next = [...prev];
-      const a = next.findIndex(s => s.symbol === symbol);
-      const b = direction === "up" ? a - 1 : a + 1;
-      if (a === -1 || b < 0 || b >= next.length) return prev;
-      [next[a], next[b]] = [next[b], next[a]];
-      return next;
-    });
+  const handleDrop = (fromIdx: number, toIdx: number) => {
+    if (fromIdx === toIdx) return;
+    const newPop = [...popularStocks];
+    const [p] = newPop.splice(fromIdx, 1);
+    newPop.splice(toIdx, 0, p);
+    setPopularStocks(newPop);
+    const newUser = [...userStockListRef.current];
+    const [u] = newUser.splice(fromIdx, 1);
+    newUser.splice(toIdx, 0, u);
+    setUserStockList(newUser);
+    userStockListRef.current = newUser;
   };
 
   const handleAddToFavorites = () => {
@@ -1048,47 +1046,74 @@ export default function App() {
                       </td>
                     </tr>
                   )}
-                  {popularStocks.map((stock) => {
+                  {popularStocks.map((stock, idx) => {
                     const isWatched = watchlist.some(w => w.symbol === stock.symbol);
                     const isCurrent = currentStock?.symbol === stock.symbol;
                     const isPositive = stock.changePercent.startsWith("+");
                     const isMock = stock.dataSource === "mock";
+                    const isDragging = dragIndex === idx;
+                    const isDragOver = dragOverIndex === idx && dragIndex !== null && dragIndex !== idx;
                     return (
                       <tr
                         key={stock.symbol}
+                        data-row-idx={String(idx)}
+                        draggable
+                        onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; setDragIndex(idx); }}
+                        onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragOverIndex(idx); }}
+                        onDrop={(e) => { e.preventDefault(); if (dragIndex !== null) handleDrop(dragIndex, idx); setDragIndex(null); setDragOverIndex(null); }}
+                        onDragEnd={() => { setDragIndex(null); setDragOverIndex(null); }}
                         onClick={() => handleQuickView(stock.name)}
-                        className={`hover:bg-[#1A1B24] transition-colors cursor-pointer ${isCurrent ? "bg-[#1E212E]" : ""}`}
+                        className={`transition-colors cursor-pointer select-none
+                          ${isDragging ? "opacity-40" : isDragOver ? "bg-blue-500/10" : isCurrent ? "bg-[#1E212E]" : "hover:bg-[#1A1B24]"}
+                          ${isDragOver ? "shadow-[inset_0_2px_0_0_#3B82F6]" : ""}
+                        `}
                       >
                         <td className="py-2.5 pr-2">
                           <div className="flex items-center gap-1">
                             <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                toggleWatchlist(stock);
-                              }}
-                              className={`text-xs focus:outline-none ${isWatched ? "text-amber-400" : "text-gray-500 hover:text-gray-300"}`}
+                              onClick={(e) => { e.stopPropagation(); toggleWatchlist(stock); }}
+                              className={`text-xs focus:outline-none flex-shrink-0 ${isWatched ? "text-amber-400" : "text-gray-500 hover:text-gray-300"}`}
                               title={isWatched ? "관심종목 해제" : "관심종목 추가"}
                             >
                               ★
                             </button>
-                            <div className="flex flex-col">
-                              <button
-                                onClick={(e) => { e.stopPropagation(); handleMoveStock(stock.symbol, "up"); }}
-                                className="text-gray-600 hover:text-gray-300 transition-colors focus:outline-none"
-                                title="위로 이동"
-                              >
-                                <ChevronUp className="w-3 h-3" />
-                              </button>
-                              <button
-                                onClick={(e) => { e.stopPropagation(); handleMoveStock(stock.symbol, "down"); }}
-                                className="text-gray-600 hover:text-gray-300 transition-colors focus:outline-none"
-                                title="아래로 이동"
-                              >
-                                <ChevronDown className="w-3 h-3" />
-                              </button>
-                            </div>
-                            <div className="flex flex-col">
-                              <span className="font-bold text-white text-xs md:text-sm">{stock.name}</span>
+                            <button
+                              className="cursor-grab active:cursor-grabbing text-gray-600 hover:text-gray-400 transition-colors focus:outline-none flex-shrink-0 touch-none"
+                              title="드래그로 순서 변경"
+                              onTouchStart={(e) => {
+                                e.stopPropagation();
+                                touchDragFrom.current = idx;
+                                touchDragTo.current = null;
+                                setDragIndex(idx);
+                              }}
+                              onTouchMove={(e) => {
+                                e.stopPropagation();
+                                if (touchDragFrom.current === null) return;
+                                const touch = e.touches[0];
+                                const el = document.elementFromPoint(touch.clientX, touch.clientY);
+                                const row = el?.closest('[data-row-idx]') as HTMLElement | null;
+                                if (row?.dataset.rowIdx !== undefined) {
+                                  const to = parseInt(row.dataset.rowIdx, 10);
+                                  touchDragTo.current = to;
+                                  setDragOverIndex(to);
+                                }
+                              }}
+                              onTouchEnd={(e) => {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                const from = touchDragFrom.current;
+                                const to = touchDragTo.current;
+                                touchDragFrom.current = null;
+                                touchDragTo.current = null;
+                                setDragIndex(null);
+                                setDragOverIndex(null);
+                                if (from !== null && to !== null && from !== to) handleDrop(from, to);
+                              }}
+                            >
+                              <GripVertical className="w-3.5 h-3.5" />
+                            </button>
+                            <div className="flex flex-col min-w-0">
+                              <span className="font-bold text-white text-xs md:text-sm truncate">{stock.name}</span>
                               <span className="text-[9px] text-gray-500 font-mono">{stock.symbol}</span>
                             </div>
                           </div>
