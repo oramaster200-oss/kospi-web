@@ -919,6 +919,7 @@ export default function App() {
                 <th className="pb-2 text-left">종목</th>
                 <th className="pb-2 text-right">현재가 (USD)</th>
                 <th className="pb-2 text-right">등락률</th>
+                <th className="pb-2 text-center">분석</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#1C1E26]">
@@ -928,8 +929,10 @@ export default function App() {
               ).map(stock => {
                 const isPositive = stock.changePercent.startsWith("+");
                 const isMock = stock.dataSource === "mock";
+                const isCurrent = currentStock?.symbol === stock.symbol;
                 return (
-                  <tr key={stock.symbol} className="hover:bg-[#1A1B24] transition-colors">
+                  <tr key={stock.symbol} className={`hover:bg-[#1A1B24] transition-colors cursor-pointer ${isCurrent ? "bg-[#1E212E]" : ""}`}
+                    onClick={() => handleSearch(stock.symbol)}>
                     <td className="py-2">
                       <span className="font-bold text-white text-xs">{stock.symbol}</span>
                     </td>
@@ -942,6 +945,18 @@ export default function App() {
                       isPositive ? "text-emerald-400" : "text-rose-400"
                     }`}>
                       {stock.changePercent}
+                    </td>
+                    <td className="py-2 text-center pl-2">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleSearch(stock.symbol); }}
+                        className={`px-2 py-1 rounded-lg text-[10px] font-black tracking-tight border transition-all cursor-pointer ${
+                          isCurrent
+                            ? "bg-blue-600 border-blue-500 text-white shadow-md"
+                            : "bg-[#16171D] border-[#23252E] text-blue-400 hover:bg-blue-500/10 hover:border-blue-500/30"
+                        }`}
+                      >
+                        AI 분석
+                      </button>
                     </td>
                   </tr>
                 );
