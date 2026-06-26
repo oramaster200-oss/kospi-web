@@ -118,11 +118,22 @@ export default function App() {
 
   // Selected chart period and interactive details
   const [selectedPeriod, setSelectedPeriod] = useState<"1D" | "1W" | "1M" | "1Y">("1D");
+  const [realChartData, setRealChartData] = useState<{ label: string; value: number }[]>([]);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   
   // Trade simulation state
   const [tradeQuantity, setTradeQuantity] = useState<number>(10);
   const [tradeMessage, setTradeMessage] = useState<{ type: "success" | "error", text: string } | null>(null);
+
+  // Fetch real chart data when stock or period changes
+  useEffect(() => {
+    if (!currentStock) { setRealChartData([]); return; }
+    setRealChartData([]);
+    fetch(`/api/stock-history?symbol=${currentStock.symbol}&period=${selectedPeriod}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.chartData?.length > 0) setRealChartData(d.chartData); })
+      .catch(() => {});
+  }, [currentStock?.symbol, selectedPeriod]);
 
   // Synchronize local storage
   useEffect(() => {
@@ -232,8 +243,6 @@ export default function App() {
       }));
     } catch (e: any) {
       setError(e.message || "서버 통신 중 오류가 발생했습니다.");
-      // Create safe fallback mock data matching user request so that they always see a working, stunning layout
-      createFallbackData(query);
     } finally {
       setLoading(false);
     }
@@ -382,8 +391,9 @@ export default function App() {
     setPortfolio(prev => prev.filter(item => item.symbol !== symbol));
   };
 
-  // Compute mock charts depending on base price and chosen period
+  // Compute chart points — real data first, random walk as fallback
   const chartPoints = useMemo(() => {
+    if (realChartData.length > 0) return realChartData;
     if (!currentStock) return [];
     const base = parseFloat(currentStock.currentPrice.replace(/,/g, "")) || 70000;
     
@@ -441,7 +451,7 @@ export default function App() {
     // Guarantee the last point equals the real current price
     points[points.length - 1].value = base;
     return points;
-  }, [currentStock, selectedPeriod]);
+  }, [currentStock, selectedPeriod, realChartData]);
 
   // SVG Chart path calculation helpers
   const svgDimensions = { width: 500, height: 160 };
@@ -605,13 +615,15 @@ export default function App() {
 
         {/* Market Status and Mini Index Widget */}
         <div className="flex items-center gap-4 bg-[#12131A] border border-[#23252E] px-4 py-2 rounded-2xl">
-          <div 
+          <div
             onClick={handleRefreshAll}
             className="flex items-center gap-2 cursor-pointer hover:bg-white/5 px-2 py-1.5 rounded-xl transition-colors"
             title="실시간 시세 새로고침"
           >
-            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-            <span className="text-xs font-bold text-emerald-500">REALTIME</span>
+            <div className={`w-2 h-2 rounded-full ${marketIndices?.dataSource === "mock" ? "bg-amber-500" : "bg-emerald-500 animate-pulse"}`}></div>
+            <span className={`text-xs font-bold ${marketIndices?.dataSource === "mock" ? "text-amber-500" : "text-emerald-500"}`}>
+              {marketIndices?.dataSource === "mock" ? "MOCK" : "REALTIME"}
+            </span>
           </div>
           <div className="h-6 w-px bg-gray-800"></div>
           <div className="flex gap-4">
@@ -726,6 +738,7 @@ export default function App() {
                     const isWatched = watchlist.some(w => w.symbol === stock.symbol);
                     const isCurrent = currentStock?.symbol === stock.symbol;
                     const isPositive = stock.changePercent.startsWith("+");
+                    const isMock = stock.dataSource === "mock";
                     return (
                       <tr
                         key={stock.symbol}
@@ -761,6 +774,7 @@ export default function App() {
                         </td>
                         <td className={`py-2.5 text-right font-mono text-xs font-bold ${isPositive ? "text-emerald-400" : "text-rose-400"}`}>
                           {stock.changePercent}
+                          {isMock && <span className="ml-1 text-[9px] text-amber-500 font-normal">~</span>}
                         </td>
                         <td className="py-2.5 text-center pl-2">
                           <button
@@ -800,9 +814,15 @@ export default function App() {
               {/* Stock Title and Indicators */}
               <div className="flex justify-between items-start gap-4">
                 <div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <h2 className="text-2xl font-black text-white">{currentStock.stockName}</h2>
                     <span className="text-xs bg-gray-800 text-gray-400 px-2 py-0.5 rounded font-mono font-medium">{currentStock.symbol}</span>
+                    {currentStock.dataSource === "mock" && (
+                      <span className="text-[10px] bg-amber-500/15 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                        <HelpCircle className="w-3 h-3" />
+                        모의 데이터
+                      </span>
+                    )}
                   </div>
                   <div className="flex flex-wrap items-center gap-3 mt-2">
                     <span className="text-4xl font-mono font-black tracking-tight text-white">{currentStock.currentPrice}</span>
@@ -1272,7 +1292,9 @@ export default function App() {
           </div>
           <div className="flex items-center gap-2">
             <span className="text-[10px] font-bold uppercase tracking-widest text-gray-500">데이터 소스</span>
-            <span className="font-mono font-bold text-white">Gemini 3.5 Flash Search Grounding</span>
+            <span className={`font-mono font-bold ${marketIndices?.dataSource === "mock" ? "text-amber-400" : "text-white"}`}>
+              {marketIndices?.dataSource === "mock" ? "모의 데이터 (Gemini API 미연결)" : "Gemini 2.5 Flash Search Grounding"}
+            </span>
           </div>
         </div>
         <div className="text-right text-[10px] text-gray-600">

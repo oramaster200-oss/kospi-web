@@ -1,12 +1,20 @@
-import "dotenv/config";
+import dotenv from "dotenv";
+dotenv.config({ path: ".env" });
+dotenv.config({ path: ".env.local", override: true });
 import express from "express";
 import path from "path";
 import { GoogleGenAI, Type } from "@google/genai";
+import { createClient } from "@supabase/supabase-js";
 
 const app = express();
 const PORT = 3000;
 
 app.use(express.json());
+
+// Initialize Supabase client (optional — cache is skipped if credentials are absent)
+const supabase = (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY)
+  ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
+  : null;
 
 // Initialize Gemini SDK with telemetry header
 const apiKey = process.env.GEMINI_API_KEY;
@@ -28,10 +36,10 @@ interface GenerateContentParams {
 async function generateContentWithRetry(params: GenerateContentParams) {
   const models = [
     "gemini-2.5-flash",
-    "gemini-3.5-flash",
     "gemini-2.5-flash-lite",
-    "gemini-3.1-flash-lite",
-    "gemini-3-flash-preview"
+    "gemini-2.0-flash",
+    "gemini-1.5-flash",
+    "gemini-1.5-flash-8b"
   ];
 
   let lastError = null;
@@ -55,6 +63,217 @@ async function generateContentWithRetry(params: GenerateContentParams) {
   console.error(`[Gemini Fallback Error] All models in the fallback chain failed.`);
   throw lastError || new Error("All Gemini models in fallback chain failed");
 }
+
+// ─── Supabase Cache Helpers ───────────────────────────────────────────────────
+
+const TTL = {
+  MARKET_INDICES: 60,    // seconds
+  POPULAR_STOCKS: 20,    // seconds
+  STOCK_ANALYSIS: 300,   // seconds (5 min)
+};
+
+function expiresAt(seconds: number): string {
+  return new Date(Date.now() + seconds * 1000).toISOString();
+}
+
+// market_indices
+async function getCachedMarketIndices() {
+  if (!supabase) return null;
+  const { data } = await supabase
+    .from("market_indices")
+    .select("*")
+    .eq("id", "current")
+    .gt("expires_at", new Date().toISOString())
+    .maybeSingle();
+  if (!data) return null;
+  return {
+    kospi:  { value: data.kospi_value,  change: data.kospi_change,  percent: data.kospi_percent,  trend: data.kospi_trend  },
+    kosdaq: { value: data.kosdaq_value, change: data.kosdaq_change, percent: data.kosdaq_percent, trend: data.kosdaq_trend },
+    statusSummary: data.status_summary,
+    updatedAt: new Date(data.updated_at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" }),
+    dataSource: data.data_source as "realtime" | "mock",
+  };
+}
+
+async function setCachedMarketIndices(payload: any) {
+  if (!supabase) return;
+  await supabase.from("market_indices").upsert({
+    id: "current",
+    kospi_value:   payload.kospi.value,
+    kospi_change:  payload.kospi.change,
+    kospi_percent: payload.kospi.percent,
+    kospi_trend:   payload.kospi.trend,
+    kosdaq_value:   payload.kosdaq.value,
+    kosdaq_change:  payload.kosdaq.change,
+    kosdaq_percent: payload.kosdaq.percent,
+    kosdaq_trend:   payload.kosdaq.trend,
+    status_summary: payload.statusSummary,
+    data_source:    payload.dataSource,
+    updated_at:     new Date().toISOString(),
+    expires_at:     expiresAt(TTL.MARKET_INDICES),
+  });
+}
+
+// popular_stocks
+async function getCachedPopularStocks() {
+  if (!supabase) return null;
+  const { data } = await supabase
+    .from("popular_stocks")
+    .select("*")
+    .gt("expires_at", new Date().toISOString());
+  if (!data || data.length < 10) return null;
+  return data.map((r: any) => ({
+    symbol:        r.symbol,
+    name:          r.name,
+    category:      r.category,
+    price:         r.price,
+    changePercent: r.change_percent,
+    dataSource:    r.data_source as "realtime" | "mock",
+  }));
+}
+
+async function setCachedPopularStocks(stocks: any[]) {
+  if (!supabase) return;
+  const rows = stocks.map((s: any) => ({
+    symbol:        s.symbol,
+    name:          s.name,
+    category:      s.category,
+    price:         s.price,
+    change_percent: s.changePercent,
+    data_source:   s.dataSource,
+    updated_at:    new Date().toISOString(),
+    expires_at:    expiresAt(TTL.POPULAR_STOCKS),
+  }));
+  await supabase.from("popular_stocks").upsert(rows);
+}
+
+// stock_analyses (query_key = query.trim().toLowerCase())
+async function getCachedStockAnalysis(queryKey: string) {
+  if (!supabase) return null;
+  const { data } = await supabase
+    .from("stock_analyses")
+    .select("*")
+    .eq("query_key", queryKey)
+    .gt("expires_at", new Date().toISOString())
+    .maybeSingle();
+  if (!data) return null;
+  return {
+    stockName:           data.stock_name,
+    symbol:              data.symbol,
+    currentPrice:        data.current_price,
+    priceChange:         data.price_change,
+    priceChangePercent:  data.price_change_percent,
+    highestPrice:        data.highest_price,
+    lowestPrice:         data.lowest_price,
+    volume:              data.volume,
+    analysisResult:      data.analysis_result,
+    analysisScore:       data.analysis_score,
+    targetPrice:         data.target_price,
+    stopLossPrice:       data.stop_loss_price,
+    summary:             data.summary,
+    strengths:           data.strengths,
+    risks:               data.risks,
+    technicalIndicators: data.technical_indicators,
+    recentNews:          data.recent_news,
+    dataSource:          data.data_source as "realtime" | "mock",
+  };
+}
+
+async function setCachedStockAnalysis(queryKey: string, analysis: any) {
+  if (!supabase) return;
+  await supabase.from("stock_analyses").upsert({
+    query_key:            queryKey,
+    symbol:               analysis.symbol,
+    stock_name:           analysis.stockName,
+    current_price:        analysis.currentPrice,
+    price_change:         analysis.priceChange,
+    price_change_percent: analysis.priceChangePercent,
+    highest_price:        analysis.highestPrice,
+    lowest_price:         analysis.lowestPrice,
+    volume:               analysis.volume,
+    analysis_result:      analysis.analysisResult,
+    analysis_score:       analysis.analysisScore,
+    target_price:         analysis.targetPrice,
+    stop_loss_price:      analysis.stopLossPrice,
+    summary:              analysis.summary,
+    strengths:            analysis.strengths,
+    risks:                analysis.risks,
+    technical_indicators: analysis.technicalIndicators,
+    recent_news:          analysis.recentNews,
+    data_source:          analysis.dataSource,
+    updated_at:           new Date().toISOString(),
+    expires_at:           expiresAt(TTL.STOCK_ANALYSIS),
+  });
+}
+
+// stock_chart_cache
+const CHART_TTL: Record<string, number> = {
+  "1D": 5 * 60,
+  "1W": 30 * 60,
+  "1M": 2 * 60 * 60,
+  "1Y": 12 * 60 * 60,
+};
+
+const YAHOO_CHART_PARAMS: Record<string, { range: string; interval: string }> = {
+  "1D": { range: "1d",  interval: "5m"  },
+  "1W": { range: "5d",  interval: "1h"  },
+  "1M": { range: "1mo", interval: "1d"  },
+  "1Y": { range: "1y",  interval: "1wk" },
+};
+
+async function getCachedChartData(symbol: string, period: string) {
+  if (!supabase) return null;
+  const { data } = await supabase
+    .from("stock_chart_cache")
+    .select("*")
+    .eq("symbol", symbol)
+    .eq("period", period)
+    .gt("expires_at", new Date().toISOString())
+    .maybeSingle();
+  if (!data) return null;
+  return { chartData: data.chart_data, dataSource: data.data_source as "realtime" | "mock" };
+}
+
+async function setCachedChartData(symbol: string, period: string, chartData: any[], dataSource: string) {
+  if (!supabase) return;
+  await supabase.from("stock_chart_cache").upsert({
+    symbol,
+    period,
+    chart_data: chartData,
+    data_source: dataSource,
+    updated_at: new Date().toISOString(),
+    expires_at: expiresAt(CHART_TTL[period] ?? 300),
+  });
+}
+
+async function fetchYahooChartData(symbol: string, period: string) {
+  const { range, interval } = YAHOO_CHART_PARAMS[period] ?? YAHOO_CHART_PARAMS["1M"];
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}.KS?range=${range}&interval=${interval}`;
+  const response = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+  if (!response.ok) throw new Error(`Yahoo Finance chart: ${response.status}`);
+
+  const json: any = await response.json();
+  const result = json.chart?.result?.[0];
+  if (!result) throw new Error("No chart result from Yahoo Finance");
+
+  const timestamps: number[] = result.timestamp ?? [];
+  const closes: number[] = result.indicators?.quote?.[0]?.close ?? [];
+  if (!timestamps.length || !closes.length) throw new Error("Empty chart data");
+
+  const chartData = timestamps
+    .map((ts, i) => {
+      const date = new Date(ts * 1000);
+      const label = period === "1D"
+        ? date.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })
+        : date.toLocaleDateString("ko-KR", { month: "short", day: "numeric" });
+      return { label, value: closes[i] ?? null };
+    })
+    .filter(p => p.value !== null);
+
+  return chartData;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 // Helper function to generate premium mock analysis when Gemini API is rate-limited or unavailable
 function getMockAnalysis(stockQuery: string) {
@@ -93,6 +312,7 @@ function getMockAnalysis(stockQuery: string) {
   const finalPrice = basePrice + diffVal;
 
   return {
+    dataSource: "mock" as const,
     stockName: name,
     symbol: symbol,
     currentPrice: finalPrice.toLocaleString("ko-KR"),
@@ -251,59 +471,71 @@ app.post("/api/verify-password", (req, res) => {
   }
 });
 
-// 1. API: Get Korean Market Indices (KOSPI & KOSDAQ) with current trends
+// 1. API: Get Korean Market Indices (KOSPI & KOSDAQ) via Yahoo Finance
 app.get("/api/market-indices", async (req, res) => {
   try {
-    if (!apiKey) {
-      // Return beautiful fallback indices if no key
-      return res.json({
-        kospi: { value: "2,682.43", change: "+14.50", percent: "+0.54%", trend: "BULLISH" },
-        kosdaq: { value: "852.12", change: "-2.11", percent: "-0.25%", trend: "BEARISH" },
-        statusSummary: "코스피는 외국인과 기관의 매수세에 힘입어 상승 마감했으나, 코스닥은 시총 상위 2차전지주의 약세로 하락 마감했습니다.",
-        updatedAt: new Date().toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })
-      });
+    // 1) 캐시 확인
+    const cached = await getCachedMarketIndices();
+    if (cached) {
+      console.log("[Cache HIT] market_indices");
+      return res.json(cached);
     }
+    console.log("[Cache MISS] market_indices — fetching from Yahoo Finance");
 
-    const prompt = `Get the latest KOSPI and KOSDAQ index figures, their daily points change and percentage changes, along with a brief 1-sentence market overview in Korean.
-You MUST return the output ONLY as a raw, valid JSON object with the following structure:
-{
-  "kospi": {
-    "value": "e.g. 2,642.50",
-    "change": "e.g. +12.30",
-    "percent": "e.g. +0.47%",
-    "trend": "BULLISH" | "BEARISH" | "NEUTRAL"
-  },
-  "kosdaq": {
-    "value": "e.g. 865.20",
-    "change": "e.g. -3.10",
-    "percent": "e.g. -0.36%",
-    "trend": "BULLISH" | "BEARISH" | "NEUTRAL"
-  },
-  "statusSummary": "Korean summary sentence"
-}
-Return only the raw JSON. Do not write markdown wrapping, other text, or explanation.`;
+    // 2) Yahoo Finance v8 chart API로 KOSPI(^KS11), KOSDAQ(^KQ11) 조회
+    const fetchIndex = async (ticker: string) => {
+      const r = await fetch(
+        `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?range=1d&interval=1d`,
+        { headers: { "User-Agent": "Mozilla/5.0" } }
+      );
+      if (!r.ok) throw new Error(`Yahoo chart ${ticker}: ${r.status}`);
+      const j: any = await r.json();
+      const res = j.chart?.result?.[0];
+      if (!res) throw new Error(`No data for ${ticker}`);
+      const meta = res.meta;
+      return {
+        price:         meta.regularMarketPrice as number,
+        prevClose:     meta.chartPreviousClose as number,
+        change:        (meta.regularMarketPrice - meta.chartPreviousClose) as number,
+        changePercent: ((meta.regularMarketPrice - meta.chartPreviousClose) / meta.chartPreviousClose * 100) as number,
+      };
+    };
 
-    const response = await generateContentWithRetry({
-      contents: prompt,
-      config: {
-        systemInstruction: "You are an expert market analyst. Provide up-to-date market index data.",
-        tools: [{ googleSearch: {} }]
-      }
-    });
+    const [kospiD, kosdaqD] = await Promise.all([fetchIndex("^KS11"), fetchIndex("^KQ11")]);
 
-    const parsed = parseGeminiResponse(response.text || "{}");
-    res.json({
-      ...parsed,
-      updatedAt: new Date().toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })
-    });
+    const fmt  = (n: number) => n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const sign = (n: number) => n >= 0 ? "+" : "";
+
+    const result = {
+      kospi: {
+        value:   fmt(kospiD.price),
+        change:  `${sign(kospiD.change)}${fmt(kospiD.change)}`,
+        percent: `${sign(kospiD.changePercent)}${kospiD.changePercent.toFixed(2)}%`,
+        trend:   (kospiD.changePercent >= 0 ? "BULLISH" : "BEARISH") as "BULLISH" | "BEARISH",
+      },
+      kosdaq: {
+        value:   fmt(kosdaqD.price),
+        change:  `${sign(kosdaqD.change)}${fmt(kosdaqD.change)}`,
+        percent: `${sign(kosdaqD.changePercent)}${kosdaqD.changePercent.toFixed(2)}%`,
+        trend:   (kosdaqD.changePercent >= 0 ? "BULLISH" : "BEARISH") as "BULLISH" | "BEARISH",
+      },
+      statusSummary: `KOSPI ${fmt(kospiD.price)} (${sign(kospiD.changePercent)}${kospiD.changePercent.toFixed(2)}%), KOSDAQ ${fmt(kosdaqD.price)} (${sign(kosdaqD.changePercent)}${kosdaqD.changePercent.toFixed(2)}%)`,
+      dataSource: "realtime" as const,
+    };
+
+    await setCachedMarketIndices(result).catch(console.warn);
+    return res.json({ ...result, updatedAt: new Date().toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" }) });
+
   } catch (error: any) {
-    console.error("Error fetching market indices:", error);
-    res.json({
-      kospi: { value: "2,682.43", change: "+14.50", percent: "+0.54%", trend: "BULLISH" },
-      kosdaq: { value: "852.12", change: "-2.11", percent: "-0.25%", trend: "BEARISH" },
-      statusSummary: "마켓 정보를 가져오는 중 일시적인 지연이 발생했으나 KOSPI 지수는 2680선 부근에서 견조한 흐름을 유지 중입니다.",
-      updatedAt: new Date().toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })
-    });
+    console.error("Error fetching market indices:", error.message);
+    const fallback = {
+      kospi:  { value: "2,682.43", change: "+14.50", percent: "+0.54%", trend: "BULLISH" as const },
+      kosdaq: { value: "852.12",   change: "-2.11",  percent: "-0.25%", trend: "BEARISH" as const },
+      statusSummary: "시장 지수를 가져오는 중 일시적인 오류가 발생했습니다.",
+      dataSource: "mock" as const,
+    };
+    await setCachedMarketIndices(fallback).catch(console.warn);
+    return res.json({ ...fallback, updatedAt: new Date().toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" }) });
   }
 });
 
@@ -314,13 +546,27 @@ app.post("/api/analyze-stock", async (req, res) => {
     return res.status(400).json({ error: "Stock name or symbol is required." });
   }
 
+  const queryKey = query.trim().toLowerCase();
+
+  // 1) 캐시 확인
+  const cached = await getCachedStockAnalysis(queryKey).catch(() => null);
+  if (cached) {
+    console.log(`[Cache HIT] stock_analyses — "${queryKey}"`);
+    return res.json(cached);
+  }
+  console.log(`[Cache MISS] stock_analyses — "${queryKey}" — fetching from Gemini`);
+
   try {
     const analysis = await getStockAnalysisFromGemini(query);
-    res.json(analysis);
+    const result = { ...analysis, dataSource: "realtime" as const };
+    await setCachedStockAnalysis(queryKey, result).catch(console.warn);
+    return res.json(result);
   } catch (error: any) {
     console.warn("[Server API Warning] Gemini call failed or quota exceeded. Falling back to high-fidelity mock data generator:", error.message);
     const analysis = getMockAnalysis(query);
-    res.json(analysis);
+    const result = { ...analysis, dataSource: "mock" as const };
+    await setCachedStockAnalysis(queryKey, result).catch(console.warn);
+    return res.json(result);
   }
 });
 
@@ -385,36 +631,99 @@ app.get("/api/popular-stocks-prices", async (req, res) => {
           name: item.nm || found?.name || item.cd,
           category: found?.category || "기타",
           price: item.nv.toLocaleString("ko-KR"),
-          changePercent: `${sign}${item.cr}%`
+          changePercent: `${sign}${item.cr}%`,
+          dataSource: "realtime" as const
         };
       });
+      await setCachedPopularStocks(merged).catch(console.warn);
       return res.json(merged);
     }
     throw new Error("Invalid datas structure from Naver Finance");
-  } catch (error: any) {
-    console.warn("[Server API Warning] Naver Finance fetch failed, falling back to mock:", error.message);
-    const now = new Date();
-    const seed = now.getMinutes() + now.getSeconds() / 60;
+  } catch (naverError: any) {
+    console.warn("[Naver Finance FAILED] Trying Yahoo Finance fallback:", naverError.message);
 
-    const fallbackData = popular.map(stock => {
-      const stockSeed = stock.name.charCodeAt(0) + seed;
-      const stockPercent = (Math.sin(stockSeed) * 2.3).toFixed(2);
-      const stockSign = parseFloat(stockPercent) >= 0 ? "+" : "";
-      const diffVal = Math.round(stock.basePrice * (parseFloat(stockPercent) / 100));
-      const finalPrice = stock.basePrice + diffVal;
+    try {
+      const yahooSymbols = popular.map(s => `${s.symbol}.KS`).join(",");
+      const yahooRes = await fetch(
+        `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${yahooSymbols}`,
+        { headers: { "User-Agent": "Mozilla/5.0" } }
+      );
+      if (!yahooRes.ok) throw new Error(`Yahoo quote: ${yahooRes.status}`);
 
-      return {
-        symbol: stock.symbol,
-        name: stock.name,
-        category: stock.category,
-        price: finalPrice.toLocaleString("ko-KR"),
-        changePercent: `${stockSign}${stockPercent}%`
-      };
-    });
-    res.json(fallbackData);
+      const yahooData: any = await yahooRes.json();
+      const quotes: any[] = yahooData.quoteResponse?.result ?? [];
+
+      const merged = popular.map(stock => {
+        const q = quotes.find((r: any) => r.symbol === `${stock.symbol}.KS`);
+        const price = q?.regularMarketPrice ?? stock.basePrice;
+        const pct   = q?.regularMarketChangePercent ?? 0;
+        const sign  = pct >= 0 ? "+" : "";
+        return {
+          symbol: stock.symbol,
+          name: stock.name,
+          category: stock.category,
+          price: Math.round(price).toLocaleString("ko-KR"),
+          changePercent: `${sign}${pct.toFixed(2)}%`,
+          dataSource: "realtime" as const
+        };
+      });
+
+      await setCachedPopularStocks(merged).catch(console.warn);
+      return res.json(merged);
+
+    } catch (yahooError: any) {
+      console.warn("[Yahoo Finance FAILED] Using mock data:", yahooError.message);
+      const now = new Date();
+      const seed = now.getMinutes() + now.getSeconds() / 60;
+
+      const fallbackData = popular.map(stock => {
+        const stockSeed = stock.name.charCodeAt(0) + seed;
+        const stockPercent = (Math.sin(stockSeed) * 2.3).toFixed(2);
+        const stockSign = parseFloat(stockPercent) >= 0 ? "+" : "";
+        const diffVal = Math.round(stock.basePrice * (parseFloat(stockPercent) / 100));
+        const finalPrice = stock.basePrice + diffVal;
+        return {
+          symbol: stock.symbol,
+          name: stock.name,
+          category: stock.category,
+          price: finalPrice.toLocaleString("ko-KR"),
+          changePercent: `${stockSign}${stockPercent}%`,
+          dataSource: "mock" as const
+        };
+      });
+      await setCachedPopularStocks(fallbackData).catch(console.warn);
+      return res.json(fallbackData);
+    }
   }
 });
 
+
+// 4. API: Fetch real price history chart data from Yahoo Finance
+app.get("/api/stock-history", async (req, res) => {
+  const symbol = String(req.query.symbol || "").trim();
+  const period = String(req.query.period || "1M").trim();
+
+  if (!symbol) return res.status(400).json({ error: "symbol is required" });
+
+  try {
+    // 1) 캐시 확인
+    const cached = await getCachedChartData(symbol, period);
+    if (cached) {
+      console.log(`[Cache HIT] stock_chart_cache — ${symbol} ${period}`);
+      return res.json(cached);
+    }
+    console.log(`[Cache MISS] stock_chart_cache — ${symbol} ${period} — fetching from Yahoo Finance`);
+
+    // 2) Yahoo Finance 조회
+    const chartData = await fetchYahooChartData(symbol, period);
+    await setCachedChartData(symbol, period, chartData, "realtime").catch(console.warn);
+    return res.json({ chartData, dataSource: "realtime" });
+
+  } catch (error: any) {
+    console.warn(`[Yahoo Finance Chart FAILED] ${symbol} ${period}:`, error.message);
+    return res.json({ chartData: [], dataSource: "mock" });
+  }
+});
 
 // Serve frontend build static files or connect to Vite middleware
 async function setupServer() {

@@ -10,6 +10,7 @@ export interface MarketIndicesResponse {
   kosdaq: MarketIndex;
   statusSummary: string;
   updatedAt: string;
+  dataSource: "realtime" | "mock";
 }
 
 export interface TechnicalIndicator {
@@ -43,6 +44,7 @@ export interface StockAnalysis {
   risks: string[];
   technicalIndicators: TechnicalIndicator[];
   recentNews: NewsItem[];
+  dataSource: "realtime" | "mock";
 }
 
 export interface PopularStock {
@@ -51,6 +53,7 @@ export interface PopularStock {
   category: string;
   price: string;
   changePercent: string;
+  dataSource: "realtime" | "mock";
 }
 
 export interface PortfolioItem {
