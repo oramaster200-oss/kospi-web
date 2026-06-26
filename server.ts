@@ -734,6 +734,47 @@ app.get("/api/stock-history", async (req, res) => {
   }
 });
 
+// ─── Cached Analysis Quick View (no TTL) ────────────────────────────────────
+
+app.get("/api/stock-cache", async (req, res) => {
+  const query = (req.query.query as string)?.trim().toLowerCase();
+  if (!query) return res.status(400).json({ error: "query required" });
+  if (!supabase) return res.status(404).json({ error: "no cache" });
+  try {
+    const { data } = await supabase
+      .from("stock_analyses")
+      .select("*")
+      .eq("query_key", query)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (!data) return res.status(404).json({ error: "no cache" });
+    return res.json({
+      stockName:           data.stock_name,
+      symbol:              data.symbol,
+      currentPrice:        data.current_price,
+      priceChange:         data.price_change,
+      priceChangePercent:  data.price_change_percent,
+      highestPrice:        data.highest_price,
+      lowestPrice:         data.lowest_price,
+      volume:              data.volume,
+      analysisResult:      data.analysis_result,
+      analysisScore:       data.analysis_score,
+      targetPrice:         data.target_price,
+      stopLossPrice:       data.stop_loss_price,
+      summary:             data.summary,
+      strengths:           data.strengths,
+      risks:               data.risks,
+      technicalIndicators: data.technical_indicators,
+      recentNews:          data.recent_news,
+      dataSource:          data.data_source,
+      cachedAt:            data.updated_at,
+    });
+  } catch (e: any) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
 // ─── User Data Sync ──────────────────────────────────────────────────────────
 
 app.get("/api/user-sync", async (req, res) => {

@@ -262,6 +262,25 @@ export default function App() {
     }
   };
 
+  const handleQuickView = async (stockName: string) => {
+    setLoading(true);
+    setError(null);
+    setTradeMessage(null);
+    try {
+      const res = await fetch(`/api/stock-cache?query=${encodeURIComponent(stockName.trim().toLowerCase())}`);
+      if (!res.ok) {
+        setError("저장된 분석 데이터가 없습니다. 상단 검색창에서 종목명을 입력 후 분석해주세요.");
+        return;
+      }
+      const data: StockAnalysis & { cachedAt?: string } = await res.json();
+      setCurrentStock(data);
+    } catch {
+      setError("저장된 분석 데이터가 없습니다. 상단 검색창에서 종목명을 입력 후 분석해주세요.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSearch = async (query: string) => {
     if (!query.trim()) return;
     setLoading(true);
@@ -811,7 +830,8 @@ export default function App() {
                     return (
                       <tr
                         key={stock.symbol}
-                        className={`hover:bg-[#1A1B24] transition-colors ${isCurrent ? "bg-[#1E212E]" : ""}`}
+                        onClick={() => handleQuickView(stock.name)}
+                        className={`hover:bg-[#1A1B24] transition-colors cursor-pointer ${isCurrent ? "bg-[#1E212E]" : ""}`}
                       >
                         <td className="py-2.5 pr-2">
                           <div className="flex items-center gap-1">
@@ -826,7 +846,7 @@ export default function App() {
                               ★
                             </button>
                             <button
-                              onClick={() => handleRemoveStock(stock.symbol)}
+                              onClick={(e) => { e.stopPropagation(); handleRemoveStock(stock.symbol); }}
                               className="text-[11px] text-gray-700 hover:text-rose-400 transition-colors focus:outline-none leading-none"
                               title="목록에서 제거"
                             >
@@ -847,14 +867,14 @@ export default function App() {
                         </td>
                         <td className="py-2.5 text-center pl-2">
                           <button
-                            onClick={() => handleSearch(stock.name)}
+                            onClick={(e) => { e.stopPropagation(); handleQuickView(stock.name); }}
                             className={`px-2 py-1 rounded-lg text-[10px] font-black tracking-tight border transition-all cursor-pointer ${
                               isCurrent
                                 ? "bg-blue-600 border-blue-500 text-white shadow-md"
                                 : "bg-[#16171D] border-[#23252E] text-blue-400 hover:bg-blue-500/10 hover:border-blue-500/30"
                             }`}
                           >
-                            AI 분석
+                            조회
                           </button>
                         </td>
                       </tr>
