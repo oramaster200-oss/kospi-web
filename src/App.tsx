@@ -420,6 +420,22 @@ export default function App() {
     if (currentStock?.symbol === symbol) setCurrentStock(null);
   };
 
+  const handleAddToFavorites = () => {
+    if (!currentStock) return;
+    if (userStockList.some(s => s.symbol === currentStock.symbol)) return;
+    const newList = [...userStockList, { symbol: currentStock.symbol, name: currentStock.stockName }];
+    setUserStockList(newList);
+    userStockListRef.current = newList;
+    setPopularStocks(prev => [...prev, {
+      symbol: currentStock.symbol,
+      name: currentStock.stockName,
+      category: "기타",
+      price: currentStock.currentPrice,
+      changePercent: currentStock.priceChangePercent,
+    }]);
+    handleRefreshAll();
+  };
+
   // Add stock to watchlist
   const toggleWatchlist = (stock: { symbol: string, name: string }) => {
     const exists = watchlist.some(item => item.symbol === stock.symbol);
@@ -956,6 +972,20 @@ export default function App() {
                         <HelpCircle className="w-3 h-3" />
                         모의 데이터
                       </span>
+                    )}
+                    {userStockList.some(s => s.symbol === currentStock.symbol) ? (
+                      <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                        <Bookmark className="w-3 h-3" />
+                        선호 종목
+                      </span>
+                    ) : (
+                      <button
+                        onClick={handleAddToFavorites}
+                        className="text-[10px] bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 hover:border-blue-500/40 px-2 py-0.5 rounded-full font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                      >
+                        <Plus className="w-3 h-3" />
+                        선호 종목 추가
+                      </button>
                     )}
                   </div>
                   <div className="flex flex-wrap items-center gap-3 mt-2">
