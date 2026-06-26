@@ -636,7 +636,7 @@ app.get("/api/popular-stocks-prices", async (req, res) => {
         const sign = (item.rf === "1" || item.rf === "2") ? "+" : (item.rf === "4" || item.rf === "5") ? "-" : "";
         return {
           symbol: item.cd,
-          name: item.nm || found?.name || item.cd,
+          name: found?.name || item.nm || item.cd,
           category: found?.category || "기타",
           price: item.nv.toLocaleString("ko-KR"),
           changePercent: `${sign}${item.cr}%`,
