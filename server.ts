@@ -657,7 +657,7 @@ app.get("/api/popular-stocks-prices", async (req, res) => {
       .split(',')
       .map(s => s.trim())
       .filter(s => /^\d{6}$/.test(s))
-      .slice(0, 30);
+      .slice(0, 50);
 
     if (requestedSymbols.length === 0) {
       return res.json([]);

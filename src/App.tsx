@@ -267,14 +267,19 @@ export default function App() {
         const contentType = stocksRes.headers.get("content-type");
         if (contentType && contentType.includes("application/json")) {
           const data = await stocksRes.json();
+          const apiMap = Object.fromEntries(data.map((s: any) => [s.symbol, s]));
           const userNames = Object.fromEntries(
             userStockListRef.current
               .filter(s => s.name && s.name !== s.symbol)
               .map(s => [s.symbol, s.name])
           );
-          setPopularStocks(data.map((s: any) => ({
-            ...s,
-            name: userNames[s.symbol] || s.name
+          setPopularStocks(userStockListRef.current.map(s => ({
+            symbol: s.symbol,
+            name: userNames[s.symbol] || apiMap[s.symbol]?.name || s.name,
+            category: apiMap[s.symbol]?.category || "기타",
+            price: apiMap[s.symbol]?.price || "-",
+            changePercent: apiMap[s.symbol]?.changePercent || "0.00%",
+            dataSource: apiMap[s.symbol]?.dataSource || "mock",
           })));
         }
       }
@@ -314,14 +319,19 @@ export default function App() {
 
       if (stocksRes.ok) {
         const data = await stocksRes.json();
+        const apiMap = Object.fromEntries(data.map((s: any) => [s.symbol, s]));
         const userNames = Object.fromEntries(
           userStockListRef.current
             .filter(s => s.name && s.name !== s.symbol)
             .map(s => [s.symbol, s.name])
         );
-        setPopularStocks(data.map((s: any) => ({
-          ...s,
-          name: userNames[s.symbol] || s.name,
+        setPopularStocks(userStockListRef.current.map(s => ({
+          symbol: s.symbol,
+          name: userNames[s.symbol] || apiMap[s.symbol]?.name || s.name,
+          category: apiMap[s.symbol]?.category || "기타",
+          price: apiMap[s.symbol]?.price || "-",
+          changePercent: apiMap[s.symbol]?.changePercent || "0.00%",
+          dataSource: apiMap[s.symbol]?.dataSource || "mock",
         })));
       }
 
