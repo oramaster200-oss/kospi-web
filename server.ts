@@ -15,6 +15,11 @@ app.use(express.json());
 const supabase = (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY)
   ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
   : null;
+if (supabase) {
+  console.log("[Supabase] Client initialized — DB caching enabled");
+} else {
+  console.warn("[Supabase] SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY missing — all DB saves will be skipped!");
+}
 
 // Initialize Gemini SDK with telemetry header
 const apiKey = process.env.GEMINI_API_KEY;
@@ -180,8 +185,11 @@ async function getCachedStockAnalysis(queryKey: string) {
 }
 
 async function setCachedStockAnalysis(queryKey: string, analysis: any) {
-  if (!supabase) return;
-  await supabase.from("stock_analyses").upsert({
+  if (!supabase) {
+    console.warn("[Supabase] setCachedStockAnalysis skipped — supabase client not initialized");
+    return;
+  }
+  const row = {
     query_key:            queryKey,
     symbol:               analysis.symbol,
     stock_name:           analysis.stockName,
@@ -203,7 +211,15 @@ async function setCachedStockAnalysis(queryKey: string, analysis: any) {
     data_source:          analysis.dataSource,
     updated_at:           new Date().toISOString(),
     expires_at:           expiresAt(TTL.STOCK_ANALYSIS),
-  });
+  };
+  const { error } = await supabase
+    .from("stock_analyses")
+    .upsert(row, { onConflict: "query_key" });
+  if (error) {
+    console.error("[Supabase] stock_analyses upsert failed:", error.message, error.details, error.hint);
+  } else {
+    console.log(`[Supabase] stock_analyses saved — query_key="${queryKey}"`);
+  }
 }
 
 // stock_chart_cache
@@ -559,13 +575,13 @@ app.post("/api/analyze-stock", async (req, res) => {
   try {
     const analysis = await getStockAnalysisFromGemini(query);
     const result = { ...analysis, dataSource: "realtime" as const };
-    await setCachedStockAnalysis(queryKey, result).catch(console.warn);
+    await setCachedStockAnalysis(queryKey, result);
     return res.json(result);
   } catch (error: any) {
     console.warn("[Server API Warning] Gemini call failed or quota exceeded. Falling back to high-fidelity mock data generator:", error.message);
     const analysis = getMockAnalysis(query);
     const result = { ...analysis, dataSource: "mock" as const };
-    await setCachedStockAnalysis(queryKey, result).catch(console.warn);
+    await setCachedStockAnalysis(queryKey, result);
     return res.json(result);
   }
 });

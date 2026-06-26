@@ -867,14 +867,14 @@ export default function App() {
                         </td>
                         <td className="py-2.5 text-center pl-2">
                           <button
-                            onClick={(e) => { e.stopPropagation(); handleQuickView(stock.name); }}
+                            onClick={(e) => { e.stopPropagation(); handleSearch(stock.name); }}
                             className={`px-2 py-1 rounded-lg text-[10px] font-black tracking-tight border transition-all cursor-pointer ${
                               isCurrent
                                 ? "bg-blue-600 border-blue-500 text-white shadow-md"
                                 : "bg-[#16171D] border-[#23252E] text-blue-400 hover:bg-blue-500/10 hover:border-blue-500/30"
                             }`}
                           >
-                            조회
+                            AI 분석
                           </button>
                         </td>
                       </tr>
