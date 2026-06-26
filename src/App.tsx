@@ -1,18 +1,20 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { 
-  TrendingUp, 
-  TrendingDown, 
-  Search, 
-  RefreshCw, 
-  Plus, 
-  Trash2, 
-  AlertTriangle, 
-  Sparkles, 
-  ChevronRight, 
-  DollarSign, 
-  Layers, 
-  Briefcase, 
-  Bookmark, 
+  TrendingUp,
+  TrendingDown,
+  Search,
+  RefreshCw,
+  Plus,
+  Trash2,
+  AlertTriangle,
+  Sparkles,
+  ChevronRight,
+  ChevronUp,
+  ChevronDown,
+  DollarSign,
+  Layers,
+  Briefcase,
+  Bookmark,
   CheckCircle,
   HelpCircle,
   ArrowRight,
@@ -490,6 +492,26 @@ export default function App() {
     userStockListRef.current = newList;
     setPopularStocks(prev => prev.filter(s => s.symbol !== symbol));
     if (currentStock?.symbol === symbol) setCurrentStock(null);
+  };
+
+  const handleMoveStock = (symbol: string, direction: "up" | "down") => {
+    const idx = userStockList.findIndex(s => s.symbol === symbol);
+    if (idx === -1) return;
+    if (direction === "up" && idx === 0) return;
+    if (direction === "down" && idx === userStockList.length - 1) return;
+    const swapIdx = direction === "up" ? idx - 1 : idx + 1;
+    const newList = [...userStockList];
+    [newList[idx], newList[swapIdx]] = [newList[swapIdx], newList[idx]];
+    setUserStockList(newList);
+    userStockListRef.current = newList;
+    setPopularStocks(prev => {
+      const next = [...prev];
+      const a = next.findIndex(s => s.symbol === symbol);
+      const b = direction === "up" ? a - 1 : a + 1;
+      if (a === -1 || b < 0 || b >= next.length) return prev;
+      [next[a], next[b]] = [next[b], next[a]];
+      return next;
+    });
   };
 
   const handleAddToFavorites = () => {
@@ -1022,6 +1044,22 @@ export default function App() {
                             >
                               ★
                             </button>
+                            <div className="flex flex-col">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleMoveStock(stock.symbol, "up"); }}
+                                className="text-gray-600 hover:text-gray-300 transition-colors focus:outline-none"
+                                title="위로 이동"
+                              >
+                                <ChevronUp className="w-3 h-3" />
+                              </button>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleMoveStock(stock.symbol, "down"); }}
+                                className="text-gray-600 hover:text-gray-300 transition-colors focus:outline-none"
+                                title="아래로 이동"
+                              >
+                                <ChevronDown className="w-3 h-3" />
+                              </button>
+                            </div>
                             <div className="flex flex-col">
                               <span className="font-bold text-white text-xs md:text-sm">{stock.name}</span>
                               <span className="text-[9px] text-gray-500 font-mono">{stock.symbol}</span>
