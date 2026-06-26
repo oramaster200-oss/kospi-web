@@ -762,6 +762,53 @@ app.get("/api/popular-stocks-prices", async (req, res) => {
 });
 
 
+// 3.5. API: Fetch overseas ETF prices (EWY, JEPQ, KORU, SOXX)
+const OVERSEAS_SYMBOLS = ["EWY", "JEPQ", "KORU", "SOXX"];
+const OVERSEAS_BASE: Record<string, number> = { EWY: 62, JEPQ: 55, KORU: 28, SOXX: 210 };
+
+app.get("/api/overseas-stocks", async (req, res) => {
+  try {
+    const symbols = OVERSEAS_SYMBOLS.join(",");
+    const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symbols}`;
+    const response = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+    if (!response.ok) throw new Error(`Yahoo Finance: ${response.status}`);
+
+    const data: any = await response.json();
+    const quotes: any[] = data.quoteResponse?.result ?? [];
+
+    const result = OVERSEAS_SYMBOLS.map(sym => {
+      const q = quotes.find((r: any) => r.symbol === sym);
+      const price = q?.regularMarketPrice ?? OVERSEAS_BASE[sym];
+      const pct   = q?.regularMarketChangePercent ?? 0;
+      const sign  = pct >= 0 ? "+" : "";
+      return {
+        symbol: sym,
+        price: price.toFixed(2),
+        changePercent: `${sign}${pct.toFixed(2)}%`,
+        dataSource: q ? "realtime" : "mock",
+      };
+    });
+
+    return res.json(result);
+  } catch (err: any) {
+    console.warn("[overseas-stocks] Yahoo Finance failed:", err.message);
+    const now = new Date();
+    const seed = now.getMinutes() + now.getSeconds() / 60;
+    const fallback = OVERSEAS_SYMBOLS.map(sym => {
+      const base = OVERSEAS_BASE[sym];
+      const pct = (Math.sin(base + seed) * 1.5).toFixed(2);
+      const sign = parseFloat(pct) >= 0 ? "+" : "";
+      return {
+        symbol: sym,
+        price: (base * (1 + parseFloat(pct) / 100)).toFixed(2),
+        changePercent: `${sign}${pct}%`,
+        dataSource: "mock",
+      };
+    });
+    return res.json(fallback);
+  }
+});
+
 // 4. API: Fetch real price history chart data from Yahoo Finance
 app.get("/api/stock-history", async (req, res) => {
   const symbol = String(req.query.symbol || "").trim();

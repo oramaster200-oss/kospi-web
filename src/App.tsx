@@ -103,6 +103,9 @@ export default function App() {
   // Market indices
   const [marketIndices, setMarketIndices] = useState<MarketIndicesResponse | null>(null);
   const [loadingIndices, setLoadingIndices] = useState(false);
+
+  // Overseas ETF stocks
+  const [overseasStocks, setOverseasStocks] = useState<{ symbol: string; price: string; changePercent: string; dataSource: string }[]>([]);
   
   // User-managed stock list
   const [userStockList, setUserStockList] = useState<{ symbol: string; name: string }[]>(() => {
@@ -227,9 +230,10 @@ export default function App() {
     try {
       const timestamp = Date.now();
       const symbols = userStockListRef.current.map(s => s.symbol).join(',');
-      const [indicesRes, stocksRes] = await Promise.all([
+      const [indicesRes, stocksRes, overseasRes] = await Promise.all([
         fetch(`/api/market-indices?_t=${timestamp}`),
-        fetch(`/api/popular-stocks-prices?symbols=${symbols}&_t=${timestamp}`)
+        fetch(`/api/popular-stocks-prices?symbols=${symbols}&_t=${timestamp}`),
+        fetch(`/api/overseas-stocks?_t=${timestamp}`)
       ]);
 
       if (indicesRes.ok) {
@@ -253,6 +257,14 @@ export default function App() {
             ...s,
             name: userNames[s.symbol] || s.name
           })));
+        }
+      }
+
+      if (overseasRes.ok) {
+        const contentType = overseasRes.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+          const data = await overseasRes.json();
+          setOverseasStocks(data);
         }
       }
     } catch (e) {
@@ -776,8 +788,54 @@ export default function App() {
       {/* BENTO GRID LAYOUT */}
       <main className="grid grid-cols-1 md:grid-cols-12 gap-4 flex-grow">
         
+        {/* BENTO 0 + 1: Left Column — Overseas ETFs + Watchlist */}
+        <div className="md:col-span-4 flex flex-col gap-4">
+
+        {/* BENTO 0: Overseas ETF fixed list */}
+        <section className="bg-[#12131A] border border-[#23252E] rounded-3xl p-4 shadow-xl">
+          <h2 className="text-xs font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1.5 mb-3">
+            <TrendingUp className="w-3.5 h-3.5 text-indigo-400" />
+            해외 ETF
+          </h2>
+          <table className="w-full border-collapse">
+            <thead className="text-[10px] text-gray-500 uppercase font-black border-b border-[#23252E]">
+              <tr>
+                <th className="pb-2 text-left">종목</th>
+                <th className="pb-2 text-right">현재가 (USD)</th>
+                <th className="pb-2 text-right">등락률</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#1C1E26]">
+              {(overseasStocks.length > 0
+                ? overseasStocks
+                : ["EWY","JEPQ","KORU","SOXX"].map(s => ({ symbol: s, price: "-", changePercent: "-", dataSource: "loading" }))
+              ).map(stock => {
+                const isPositive = stock.changePercent.startsWith("+");
+                const isMock = stock.dataSource === "mock";
+                return (
+                  <tr key={stock.symbol} className="hover:bg-[#1A1B24] transition-colors">
+                    <td className="py-2">
+                      <span className="font-bold text-white text-xs">{stock.symbol}</span>
+                    </td>
+                    <td className="py-2 text-right font-mono text-xs font-bold text-white">
+                      ${stock.price}
+                      {isMock && <span className="ml-1 text-[9px] text-amber-500 font-normal">~</span>}
+                    </td>
+                    <td className={`py-2 text-right font-mono text-xs font-bold ${
+                      stock.changePercent === "-" ? "text-gray-500" :
+                      isPositive ? "text-emerald-400" : "text-rose-400"
+                    }`}>
+                      {stock.changePercent}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </section>
+
         {/* BENTO 1: Left Navigation & Watchlist (col-span-4) */}
-        <section id="bento-watchlist" className="md:col-span-4 bg-[#12131A] border border-[#23252E] rounded-3xl p-5 flex flex-col justify-between shadow-xl">
+        <section id="bento-watchlist" className="bg-[#12131A] border border-[#23252E] rounded-3xl p-5 flex flex-col justify-between shadow-xl">
           <div>
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-xs font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
@@ -956,6 +1014,7 @@ export default function App() {
             </p>
           </div>
         </section>
+        </div>{/* end left column wrapper */}
 
         {/* BENTO 2: Center - Hero Stock details & Interactive Chart (col-span-5) */}
         <section id="bento-chart" className="md:col-span-5 bg-[#12131A] border border-[#23252E] rounded-3xl p-6 flex flex-col justify-between relative shadow-xl min-h-[420px]">
